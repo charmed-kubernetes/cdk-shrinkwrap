@@ -38,10 +38,11 @@ def main():
     os.makedirs('%s/charms' % root)
     os.makedirs('%s/resources' % root)
 
-    # Storage for the script we'll generate later.
-    deploycmds = []
-    attachcmds = []
-    relatecmds = []
+    # Keep track of commands for attaching resources to applications.
+    attach = []
+
+    # Keep track of subordinate applications.
+    subordinates = []
 
     # For each application, download the charm, resources, and snaps.
     for appname, app in bundle['applications'].items():
@@ -51,13 +52,16 @@ def main():
         id = app['Charm'][3:]
 
         # Download the charm and unzip it.
-        print('    Downloading charm...')
+        print('    Downloading %s...' % id)
         check_call(('wget --quiet https://api.jujucharms.com/charmstore/v5/%s/archive -O /tmp/archive.zip' % id).split())
         check_call(('unzip -qq /tmp/archive.zip -d %s/charms/%s' % (root, appname)).split())
         check_call('rm /tmp/archive.zip'.split())
 
-        # Store a juju command for deploying the charm.
-        deploycmds.append("juju deploy ./charms/%s" % appname)
+        # If this is a subordinate charm, we won't need a machine for it.
+        with open(os.path.join(root, 'charms', appname, 'metadata.yaml'), 'r') as stream:
+            metadata = yaml.load(stream)
+            if 'subordinate' in metadata and metadata['subordinate'] is True:
+                subordinates.append(appname)
 
         # Get the charm resources metadata.
         resp = requests.get('https://api.jujucharms.com/charmstore/v5/%s/meta/resources' % id)
@@ -99,7 +103,7 @@ def main():
                 snap = resource['Path'].replace('.snap', '')
 
                 # Download the snap and move it into position.
-                check_output(('snap download %s --channel=stable' % snap).split(), stderr=STDOUT)
+                check_output(('snap download %s --channel=%s' % (snap, channel)).split(), stderr=STDOUT)
                 check_call('rm *.assert', shell=True)
                 check_call('mv %s* %s' % (snap, path), shell=True)
 
@@ -109,22 +113,54 @@ def main():
                 check_call(('wget --quiet %s -O %s' % (url, path)).split())
 
             # Store a juju command for attaching the resource.
-            attachcmds.append('juju attach %s %s=%s' % (appname, resource['Name'], os.path.join('.', 'resources', appname, filename)))
+            attach.append('juju attach %s %s=%s' % (appname, resource['Name'], os.path.join('.', 'resources', appname, filename)))
 
-    # Store juju commands for relating charms.
+
+    # Download the core snap.
+    print('Downloading the core snap...')
+    check_output('snap download core --channel=stable'.split(), stderr=STDOUT)
+    check_call('mv core*.snap %s' % os.path.join(root, 'resources', 'core.snap'), shell=True)
+    check_call('rm *.assert', shell=True)
+
+    # Figure out how many machines we'll need. TODO: this should take into account the number of units defined by the bundle.
+    machineCount = sum([1 for appname in bundle['applications'] if appname not in subordinates])
+
+    # Commands for creating machines and waiting on them to be live..
+    deploy = []
+    deploy.append("juju add-machine -n %d" % machineCount)
+    deploy.append("set +x")
+    deploy.append("until [[ %d =~ `juju machines | grep started | wc -l` ]]; do sleep 1; echo Waiting for machines to start...; done" % machineCount)
+    deploy.append("set -x")
+
+    # Let's just install snap core on everything. TODO: don't do this on machines we don't need snaps on.
+    for machine in range(machineCount):
+        deploy.append('juju scp %s %d:' % (os.path.join('resources', 'core.snap'), machine))
+        deploy.append('juju run --machine %d "sudo snap install --dangerous /home/ubuntu/core.snap"' % machine)
+
+    # Commands for deploying charms to machines.
+    machine = 0
+    for appname, app in bundle['applications'].items():
+        if appname in subordinates:
+            deploy.append("juju deploy ./charms/%s" % appname)
+        else:
+            deploy.append("juju deploy --to %d ./charms/%s" % (machine, appname))
+            machine += 1
+
+    # Commands for relating charms.
+    relate = []
     for relation in bundle['Relations']:
-        relatecmds.append('juju relate %s %s' % (relation[0], relation[1]))
+        relate.append('juju relate %s %s' % (relation[0], relation[1]))
 
     # Write the deployment script.
     shpath = os.path.join(root, 'deploy.sh')
     with open(shpath, 'w') as sh:
         sh.write('#!/bin/bash\n\n')
         sh.write('set -eux\n\n')
-        for cmd in deploycmds:
+        for cmd in deploy:
             sh.write(cmd + '\n')
-        for cmd in attachcmds:
+        for cmd in attach:
             sh.write(cmd + '\n')
-        for cmd in relatecmds:
+        for cmd in relate:
             sh.write(cmd + '\n')
 
     # Make the deployment script executable.
