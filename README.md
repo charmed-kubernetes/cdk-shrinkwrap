@@ -91,6 +91,21 @@ Deploying charm "local:xenial/etcd-0".
 + juju relate flannel:cni kubernetes-worker:cni
 ```
 
+## Notes
+
+- If you're using this in conjuction with cdk-offline, edit your script from this:
+
+```sh
+juju add-machine -n <something>
+```
+
+to this:
+
+```sh
+juju add-space foo <your private subnet CIDR from cdk-offline, probably 172.32.0.0/24>
+juju add-machine -n <something> --constraints spaces=foo
+```
+
 ## Limitations
 
 - Can't build cross-platform tarballs. If you want a tarball for s390x, you'll need to
