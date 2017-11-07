@@ -2,7 +2,7 @@
 
 Builds a tarball of charms, resources, snaps, and a deploy script for offline installs.
 
-Please see [this wiki page](https://github.com/juju-solutions/bundle-canonical-kubernetes/wiki/Running-CDK-in-a-restricted-environment) for documentation.
+Please see [this wiki page](https://github.com/juju-solutions/bundle-canonical-kubernetes/wiki/Running-CDK-in-a-restricted-environment#install-cdk-using-cdk-shrinkwrap) for documentation.
 
 ## Limitations
 
