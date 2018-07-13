@@ -8,10 +8,4 @@ Please see [this wiki page](https://github.com/juju-solutions/bundle-canonical-k
 
 - Can't build cross-platform tarballs. If you want a tarball for s390x, you'll need to
 build it on s390x.
-- juju add-unit is going to fail because each new node needs to have the core snap copied over and installed.
-- If the machine numbers aren't 0,1,2,3... things are gonna break.
-
-## TODO
-
-- Write an add-unit script that handles adding a machine, installing the core snap, and adding a unit of X to that machine.
-- Handle machine numbers better, and don't forget about the add-unit script.
+- juju add-unit without a --to directive is going to fail because each new node needs to have the core snap copied over and installed.
