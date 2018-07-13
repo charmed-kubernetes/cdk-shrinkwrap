@@ -37,7 +37,6 @@ def build_deploy_script(script_filename, bundle, subordinates, applications_to_d
     else:
         machineCount = get_machine_count(bundle, subordinates)
 
-    attach = []
     deploy = []
     relate = []
 
@@ -93,8 +92,6 @@ def build_deploy_script(script_filename, bundle, subordinates, applications_to_d
         sh.write('#!/bin/bash\n\n')
         sh.write('set -eux\n\n')
         for cmd in deploy:
-            sh.write(cmd + '\n')
-        for cmd in attach:
             sh.write(cmd + '\n')
         for cmd in relate:
             sh.write(cmd + '\n')
