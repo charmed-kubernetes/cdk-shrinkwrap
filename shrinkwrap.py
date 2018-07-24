@@ -33,9 +33,11 @@ def get_machine_count(applications_to_deploy, subordinates):
 def build_deploy_script(script_filename, bundle, subordinates, applications_to_deploy=None):
     # Figure out how many machines we'll need.
     if applications_to_deploy:
-        machineCount = get_machine_count(applications_to_deploy, subordinates)
+        # when applications_to_deploy is set, we're writing out scripts to add a single machine
+        # so we shouldn't use the unit count for that
+        machineCount = 1
     else:
-        machineCount = get_machine_count(bundle, subordinates)
+        machineCount = get_machine_count(bundle['applications'], subordinates)
 
     deploy = []
     relate = []
@@ -201,7 +203,7 @@ def main():
         script_filename = os.path.join(root, 'add-unit-{}.sh'.format(appname))
         app_to_deploy = {appname: app}
         build_deploy_script(script_filename, bundle, subordinates, app_to_deploy)
-        print('    add-unit-{}.sh'.format(script_filename))
+        print('    {}'.format(script_filename))
 
     # Download the core snap.
     print('Downloading the core snap...')
