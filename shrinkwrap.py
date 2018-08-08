@@ -45,7 +45,7 @@ def build_deploy_script(script_filename, bundle, subordinates, applications_to_d
     # Commands for creating machines and waiting on them to be live..
     deploy.append("MACHINES=$(juju add-machine -n %d 2>&1|awk '{print $3}')" % machineCount)
     deploy.append("set +x")
-    deploy.append("until [[ %d =~ `juju machines | grep started | wc -l` ]]; do sleep 1; echo Waiting for machines to start...; done" % machineCount) # noqa
+    deploy.append("until [[ %d -eq `juju machines | grep started | wc -l` ]]; do sleep 1; echo Waiting for machines to start...; done" % machineCount) # noqa
     deploy.append("set -x")
 
     # Let's just install snap core on everything. TODO: don't do this on machines we don't need snaps on.
