@@ -143,7 +143,11 @@ def main():
                 subordinates.append(appname)
 
         # Get the charm resources metadata.
-        resp = requests.get('https://api.jujucharms.com/charmstore/v5/%s/meta/resources' % id)
+        charm = id.rpartition('-')[0]
+        resp = requests.get(
+            'https://api.jujucharms.com/charmstore/v5/%s/meta/resources' % charm,
+            params={'channel': args.channel}
+        )
         resources = json.loads(resp.text)
         bundle['applications'][appname]['resources'] = resources
 
@@ -158,8 +162,6 @@ def main():
             extension = os.path.splitext(resource['Path'])[1]
             filename = resource['Name'] + extension
             resource['filename'] = filename
-
-            print('    Downloading resource %s...' % filename)
 
             path = os.path.join(root, 'resources', appname, filename)
 
@@ -185,15 +187,17 @@ def main():
                 snap = resource['Path'].replace('.snap', '')
 
                 # Download the snap and move it into position.
+                print('    Downloading resource %s from snap store...' % filename)
                 check_output(('snap download %s --channel=%s' % (snap, channel)).split(), stderr=STDOUT)
                 check_call('rm *.assert', shell=True)
                 check_call('mv %s* %s' % (snap, path), shell=True)
 
             # This isn't a snap, do it the easy way.
             else:
-                url = 'https://api.jujucharms.com/charmstore/v5/%s/resource/%s/%d' % (id,
-                                                                                      resource['Name'],
-                                                                                      resource['Revision'])
+                name = resource['Name']
+                revision = resource['Revision']
+                url = 'https://api.jujucharms.com/charmstore/v5/%s/resource/%s/%d' % (charm, name, revision)
+                print('    Downloading resource %s from charm store revision %s...' % (filename, revision))
                 check_call(('wget --quiet %s -O %s' % (url, path)).split())
 
     print('Writing deploy scripts...')
