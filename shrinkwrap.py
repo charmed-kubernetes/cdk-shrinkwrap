@@ -172,11 +172,6 @@ def main():
                 # If the current resource is the core snap, ignore channel
                 # and instead always download from stable.
                 if resource['Name'] != 'core':
-                    # Try to get channel from bundle
-                    if 'Options' in app:
-                        if 'channel' in app['Options']:
-                            channel = app['Options']['channel']
-
                     # Try to get channel from config
                     with open(os.path.join(root, 'charms', appname, 'config.yaml'), 'r') as stream:
                         config = yaml.load(stream)
@@ -184,6 +179,11 @@ def main():
                             if 'channel' in config['options']:
                                 # Might need to check if this is nonsensical
                                 channel = config['options']['channel']['default']
+                                
+                    # Check if there's a channel override in the bundle
+                    if 'Options' in app:
+                        if 'channel' in app['Options']:
+                            channel = app['Options']['channel']
 
                 # Path without .snap extension is currently a match for the name in the snap store. This may not always
                 # be the case.
