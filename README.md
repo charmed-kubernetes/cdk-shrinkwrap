@@ -21,8 +21,12 @@ Please see [this wiki page][wiki-page] for documentation.
 
 - `requests`
 - `pyyaml`
+- `semver`
+
+
 ### Necessary Snaps 
 
 - `juju`
+- `docker`
 
 [wiki-page]: https://github.com/juju-solutions/bundle-canonical-kubernetes/wiki/Running-CDK-in-a-restricted-environment#install-cdk-using-cdk-shrinkwrap
