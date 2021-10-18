@@ -1,0 +1,24 @@
+name: Test Suite
+on: [pull_request]
+
+jobs:
+  lint-unit:
+    name: Lint, Unit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: [3.6, 3.7, 3.8, 3.9]
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python }}
+    - name: Install Dependencies
+      run: |
+        pip install tox
+    - name: Lint
+      run: tox -vve lint
+    - name: Unit Tests
+      run: tox -vve unit

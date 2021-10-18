@@ -11,6 +11,7 @@ import shlex
 import shutil
 from subprocess import check_call, check_output, Popen, STDOUT, PIPE, CalledProcessError
 import sys
+from typing import Optional
 
 import requests
 import semver
@@ -21,13 +22,13 @@ shlx = shlex.split
 
 def remove_prefix(str_o, prefix):
     if str_o.startswith(prefix):
-        return str_o[len(prefix):]
+        return str_o[len(prefix) :]  # noqa: E203 whitespace before ':'
     return str_o
 
 
 def remove_suffix(str_o, suffix):
     if str_o.endswith(suffix):
-        return str_o[:-len(suffix)]
+        return str_o[: -len(suffix)]
     return str_o
 
 
@@ -62,7 +63,7 @@ class Downloader:
         self.path.mkdir(parents=True, exist_ok=True)
 
     @staticmethod
-    def args(target: Path, channel: str, arch: str):
+    def args(target: Path, channel: Optional[str] = None, arch: Optional[str] = None):
         r_args = ""
         if channel:
             r_args += f" --channel={channel}"
@@ -379,7 +380,7 @@ def download(args, root):
                 snap = Path(path).stem
 
                 # Download the snap and move it into position.
-                snap_path = snaps.download(snap, snap_channel, args.arch)
+                snaps.download(snap, snap_channel, args.arch)
 
                 # Ensure an empty snap shows up in the resource path
                 snap_resource = resources.path / name
