@@ -1,6 +1,6 @@
 # cdk-shrinkwrap
 
-Builds a tarball of charms, resources, snaps, and a deploy script for offline installs.
+Builds a tarball of charms, resources, containers, snaps, and a deploy script for offline installs.
 
 Please see [this wiki page][wiki-page] for documentation.
 

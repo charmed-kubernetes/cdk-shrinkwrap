@@ -31,44 +31,13 @@ def get_args():
     parser.add_argument(
         "--use_path", "-d", default=None, help="Use existing root path."
     )
+    parser.add_argument(
+        "--overlay",
+        default=list(),
+        action="append",
+        help="Set of overlays to apply to the base bundle.",
+    )
     return parser.parse_args()
-
-
-def build_offline_bundle(root, bundle):
-    # create a bundle.yaml with links to local charms and resources
-    created_bundle = dict(bundle)
-    empty_snap = "./resources/.empty.snap"
-    (root / empty_snap).touch(exist_ok=True)
-
-    def update_resources(app_name, rsc):
-        def resource_file(name):
-            p = (root / "resources" / app_name / name).glob("*")
-            root_path = next(p, empty_snap)  # use either downloaded file or empty_snap
-            return root_path and str(root_path).replace(str(root), ".")
-
-        return {name: resource_file(name) for name in rsc}
-
-    def update_app(app_name, app):
-        app.update(
-            {
-                "charm": "./" + str(Path("charms") / app_name),
-                "resources": update_resources(app_name, app["resources"]),
-            }
-        )
-        return app
-
-    created_bundle["applications"] = {
-        app_name: update_app(app_name, app)
-        for app_name, app in bundle["applications"].items()
-    }
-
-    with (root / "bundle.yaml").open("w") as fp:
-        yaml.safe_dump(created_bundle, fp)
-
-    deploy_sh = root / "deploy.sh"
-    deploy_sh.touch()
-    deploy_sh.chmod(mode=0o755)
-    deploy_sh.write_text("""#!/bin/bash\n""" """juju deploy ./bundle.yaml""")
 
 
 class Downloader:
@@ -88,25 +57,53 @@ class Downloader:
         return r_args, target
 
 
-class CharmDownloader(Downloader):
-    def __init__(self, root: PathLike[str]):
+class BundleDownloader(Downloader):
+    def __init__(self, root: PathLike[str], args):
         super().__init__(Path(root) / "charms")
         self.bundle_path = self.path / ".bundle"
+        self.args = args
+        self.overlays = OverlayDownloader(self.bundle_path)
+        self._cached_bundles = {}
 
     @property
-    def bundle(self):
-        with (self.bundle_path / "bundle.yaml").open() as fp:
-            return yaml.safe_load(fp)
+    def bundles(self):
+        if self._cached_bundles:
+            return self._cached_bundles
 
-    def bundle_download(self, bundle: str, channel: str):
+        available_overlays = self.overlays.list
+        for overlay in self.args.overlay:
+            assert (
+                overlay in available_overlays
+            ), f"{overlay} is not a valid overlay bundle, choose any from {available_overlays}"
+
+        all_bundles = ["bundle.yaml"] + self.args.overlay
+
+        for bundle_name in all_bundles:
+            if not (self.bundle_path / bundle_name).exists():
+                self.overlays.download(bundle_name)
+            with (self.bundle_path / bundle_name).open() as fp:
+                bundle = yaml.safe_load(fp)
+                self._cached_bundles[bundle_name] = bundle
+
+        return self._cached_bundles
+
+    @property
+    def applications(self):
+        return {
+            app_name: self.bundles["bundle.yaml"]["applications"].get(app_name) or app
+            for bundle in self.bundles.values()
+            for app_name, app in bundle["applications"].items()
+        }
+
+    def bundle_download(self):
+        bundle = self.args.bundle
         ch = bundle.startswith("ch:") or not bundle.startswith("cs:")
         if ch:
             self._charmhub_downloader(
-                ".bundle", bundle.removeprefix("ch:"), channel=channel
+                ".bundle", bundle.removeprefix("ch:"), channel=self.args.channel
             )
         else:
             self._charmstore_downloader(".bundle", bundle.removeprefix("cs:"))
-        return self.bundle
 
     def app_download(self, appname: str, app: dict, **kwds):
         charm = app["charm"]
@@ -146,9 +143,39 @@ class CharmDownloader(Downloader):
         return rsc_target
 
 
+class OverlayDownloader(Downloader):
+    URL = "https://api.github.com/repos/charmed-kubernetes/bundle/contents/overlays"
+
+    def __init__(self, bundles_path: PathLike[str]):
+        super().__init__(bundles_path)
+        self._list_cache = None
+
+    @property
+    def list(self):
+        if self._list_cache:
+            return self._list_cache
+        resp = requests.get(
+            self.URL, headers={"Accept": "application/vnd.github.v3+json"}
+        )
+        self._list_cache = {
+            obj.get("name"): obj.get("download_url") for obj in resp.json()
+        }
+        return self._list_cache
+
+    def download(self, overlay):
+        overlay_url = self.list[overlay]
+        sys.stdout.write(f'    Downloading "{overlay}" from {overlay_url}...')
+        with (self.path / overlay).open("w") as fp:
+            fp.write(requests.get(overlay_url).text)
+        print("Done")
+
+
 class ContainerDownloader(Downloader):
     URL = "https://api.github.com/repos/charmed-kubernetes/bundle/contents/container-images"
     IMAGE_REPO = "rocks.canonical.com/cdk/"
+
+    def __init__(self, root: PathLike[str]):
+        super().__init__(Path(root) / "containers")
 
     def _revisions(self, channel_filter: str):
         if channel_filter == "latest/stable":
@@ -191,7 +218,10 @@ class ContainerDownloader(Downloader):
             p1.stdout.close()
             p2.communicate()
             print("done")
-            check_call(shlx(f"sudo docker rmi {image_src}"))
+
+    def _image_delete(self, image):
+        image_src = f"{self.IMAGE_REPO}{image}"
+        check_call(shlx(f"sudo docker rmi {image_src}"))
 
     def download(self, channel):
         _, latest_url = self._revisions(channel)[-1]
@@ -199,6 +229,8 @@ class ContainerDownloader(Downloader):
         images = requests.get(latest_url).text.splitlines()
         for container_image in images:
             self._image_save(container_image)
+        for container_image in images:
+            self._image_delete(container_image)
 
 
 class SnapDownloader(Downloader):
@@ -268,14 +300,70 @@ def charm_channel(app, charm_path) -> str:
     return channel
 
 
+def build_offline_bundle(root, charms: BundleDownloader):
+    empty_snap = "./resources/.empty.snap"
+    (root / empty_snap).touch(exist_ok=True)
+
+    def update_resources(app_name, rsc):
+        def resource_file(name):
+            p = (root / "resources" / app_name / name).glob("*")
+            root_path = next(p, empty_snap)  # use either downloaded file or empty_snap
+            return root_path and str(root_path).replace(str(root), ".")
+
+        return {name: resource_file(name) for name in rsc}
+
+    def update_app(app_name, app):
+        if app:
+            app.update(
+                {
+                    "charm": "./" + str(Path("charms") / app_name),
+                    "resources": update_resources(app_name, app.get("resources", [])),
+                }
+            )
+        return app
+
+    # create a bundle.yaml with links to local charms and resources
+    deploy_args = ""
+    for bundle_name, bundle in charms.bundles.items():
+        created_bundle = dict(bundle)
+        created_bundle["applications"] = {
+            app_name: update_app(app_name, app)
+            for app_name, app in bundle["applications"].items()
+        }
+
+        with (root / bundle_name).open("w") as fp:
+            yaml.safe_dump(created_bundle, fp)
+
+        is_trusted = any(
+            app.get("trust") for app in bundle["applications"].values() if app
+        )
+        is_overlay = bundle_name != "bundle.yaml"
+
+        if is_overlay:
+            deploy_args += f" --overlay {bundle_name}"
+        else:
+            deploy_args += f" {bundle_name}"
+
+        if is_trusted:
+            deploy_args += " --trust"
+
+    deploy_sh = root / "deploy.sh"
+    deploy_sh.touch()
+    deploy_sh.chmod(mode=0o755)
+    bundle_list = charms.bundles.keys()
+    deploy_sh.write_text("#!/bin/bash\n")
+    deploy_sh.write_text(f"juju deploy{deploy_args}")
+
+
 def download(args, root):
     snaps = SnapDownloader(root)
-    charms = CharmDownloader(root)
-    bundle = charms.bundle_download(args.bundle, args.channel)
+    charms = BundleDownloader(root, args)
+    print("Bundles")
+    charms.bundle_download()
     k8s_master_channel = None
 
     # For each application, download the charm, resources, and snaps.
-    for app_name, app in bundle["applications"].items():
+    for app_name, app in charms.applications.items():
         print(app_name)
         charm_id = charms.app_download(app_name, app)
 
@@ -313,10 +401,11 @@ def download(args, root):
 
     if k8s_master_channel:
         # Download the Container Images based on the kubernetes-master channel
+        print("Containers")
         containers = ContainerDownloader(root)
         containers.download(k8s_master_channel)
 
-    return bundle
+    return charms
 
 
 def main():
@@ -341,7 +430,7 @@ def main():
     if not skip_download:
         bundle = download(args, root)
     else:
-        bundle = CharmDownloader(root).bundle
+        bundle = BundleDownloader(root, args)
 
     # Generate a new bundle.yaml for deployment
     sys.stdout.write("Writing offline bundle.yaml ...")
@@ -355,7 +444,7 @@ def main():
             f'tar -czf {root}.tar.gz -C build/ {root.relative_to("build")}  --force-local'
         )
     )
-    shutil.rmtree(root)
+    # shutil.rmtree(root)
     print("done")
 
 
