@@ -1,0 +1,12 @@
+description: Charmed Kubernetes overlay for unit testing.
+applications:
+  calico:
+    charm: cs:~containers/calico
+  flannel:
+relations:
+- - calico:etcd
+  - etcd:db
+- - calico:cni
+  - kubernetes-master:cni
+- - calico:cni
+  - kubernetes-worker:cni
