@@ -22,3 +22,8 @@ jobs:
       run: tox -vve lint
     - name: Unit Tests
       run: tox -vve unit
+    - name: Upload Coverage
+      uses: codecov/codecov-action@v1
+      with:
+        files: ./report/unit/coverage-xml
+        flags: unittests # optional
