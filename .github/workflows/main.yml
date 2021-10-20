@@ -1,0 +1,33 @@
+name: Test Suite
+on:
+  pull_request:
+    branches: [ master ]
+  push:
+    branches: [ master ]
+
+jobs:
+  lint-unit:
+    name: Lint, Unit
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: [3.6, 3.7, 3.8, 3.9]
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: ${{ matrix.python }}
+    - name: Install Dependencies
+      run: |
+        pip install tox
+    - name: Lint
+      run: tox -vve lint
+    - name: Unit Tests
+      run: tox -vve unit
+    - name: Upload Coverage
+      uses: codecov/codecov-action@v1
+      with:
+        files: ./report/unit/coverage-xml
+        flags: unittests # optional
