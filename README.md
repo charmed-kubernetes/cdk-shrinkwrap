@@ -1,5 +1,6 @@
 # cdk-shrinkwrap
-[![Test Suite](https://github.com/charmed-kubernetes/cdk-shrinkwrap/actions/workflows/main.yml/badge.svg)](https://github.com/charmed-kubernetes/cdk-shrinkwrap/actions/workflows/main.yml)
+[![Test Suite](https://github.com/charmed-kubernetes/cdk-shrinkwrap/actions/workflows/main.yml/badge.svg?branch=master)](https://github.com/charmed-kubernetes/cdk-shrinkwrap/actions/workflows/main.yml)
+[![codecov](https://codecov.io/gh/charmed-kubernetes/cdk-shrinkwrap/branch/master/graph/badge.svg?token=rI9OruOCKk)](https://codecov.io/gh/charmed-kubernetes/cdk-shrinkwrap)
 
 
 Builds a tarball of charms, resources, containers, snap-store-proxy tarballs, and a deploy script for offline installs.
