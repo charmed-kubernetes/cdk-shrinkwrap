@@ -23,6 +23,7 @@ shlx = shlex.split
 @contextmanager
 def status(msg):
     sys.stdout.write(f"    {msg} ... ")
+    sys.stdout.flush()
     yield
     print("done")
 
@@ -52,6 +53,7 @@ def get_args():
         action="append",
         help="Set of overlays to apply to the base bundle.",
     )
+    parser.add_argument("--skip-tar-gz", action="store_true", help="Skip creating a tar.gz in the ./build folder")
     return parser.parse_args()
 
 
@@ -433,18 +435,45 @@ def build_offline_bundle(root, charms: BundleDownloader):
         if is_trusted:
             deploy_args += " --trust"
 
-    deploy_readme = root / "README"
-    with deploy_readme.open("w") as fp:
-        fp.write("# on the machine set as the snap-store-proxy\n")
-
+    push_snaps = root / "push_snaps.sh"
+    with push_snaps.open("w") as fp:
+        fp.write("#!/bin/bash\n")
+        fp.write("\n")
         for snap in (root / "snaps").glob("**/*.tar.gz"):
             fp.write(f"snap-store-proxy push-snap {local_path(snap)}\n")
         fp.write("\n")
+    push_snaps.chmod(mode=0o755)
 
-        fp.write("# on the machine set as the container registry\n")
-        for container in (root / "containers").glob("**/*.tar.gz"):
-            fp.write(f"docker load < {local_path(container)}\n")
+    push_containers = root / "push_container_images.sh"
+    with push_containers.open("w") as fp:
+        fp.write("#!/bin/bash\n")
         fp.write("\n")
+        fp.write(
+            "if [ -z ${DOCKER_REGISTRY+x} ]; then \n"
+            '    echo "DOCKER_REGISTRY is unset; \n'
+            "    exit -1; \n"
+            "fi\n\n"
+        )
+        containers_path = root / "containers"
+        for container_tgz in containers_path.glob("**/*.tar.gz"):
+            image = str(container_tgz.relative_to(containers_path)).replace(".tar.gz", "")
+            fp.write(f"echo Push {image} to $DOCKER_REGISTRY\n")
+            fp.write(f"docker load < {local_path(container_tgz)}\n")
+            fp.write(f"docker tag {ContainerDownloader.IMAGE_REPO}{image} $DOCKER_REGISTRY/{image}\n")
+            fp.write(f"docker image push $DOCKER_REGISTRY/{image}\n")
+            fp.write(f"docker image remove {ContainerDownloader.IMAGE_REPO}{image}\n")
+            fp.write(f"docker image remove $DOCKER_REGISTRY/{image}\n\n")
+        fp.write("\n")
+    push_containers.chmod(mode=0o755)
+
+    deploy_readme = root / "README"
+    with deploy_readme.open("w") as fp:
+        fp.write("# on the machine set as the snap-store-proxy\n")
+        fp.write("./push_snaps.sh\n")
+
+        fp.write("# in the context of the container registry\n")
+        fp.write("# define DOCKER_REGISTRY environment variable (ie. localhost:5000)\n")
+        fp.write("./push_container_images.sh\n")
 
         fp.write("# once the juju model is set to point to the container and snap-store-proxy\n")
         fp.write(f"echo juju deploy{deploy_args}")
@@ -481,9 +510,10 @@ def main():
         build_offline_bundle(root, bundle)
 
     # Make the tarball.
-    with status("Writing tarball"):
-        check_call(shlx(f'tar -czf {root}.tar.gz -C build/ {root.relative_to("build")} --force-local'))
-        shutil.rmtree(root)
+    if not args.skip_tar_gz:
+        with status(f"Writing tarball {root}.tar.gz"):
+            check_call(shlx(f'tar -czf {root}.tar.gz -C build/ {root.relative_to("build")} --force-local'))
+            shutil.rmtree(root)
 
 
 if __name__ == "__main__":
