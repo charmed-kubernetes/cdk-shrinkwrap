@@ -5,5 +5,27 @@
 # define DOCKER_REGISTRY environment variable (ie. localhost:5000)
 ./push_container_images.sh
 
-# once the juju model is set to point to the container and snap-store-proxy
+# update the provided bundle to use the container registry (if using on-prem container registry)
+edit ./bundle.yaml
+```
+  containerd:
+    annotations:
+      gui-x: '475'
+      gui-y: '800'
+    charm: ./charms/containerd
+    options:
+      custom_registries: '[{"host": "docker.io", "url": "http://my.custom.registry:5000"}]'   # point to your docker registry
+```
+
+# and snap-store-proxy (if using on-prem snaps)
+
+cat << EOF >> snap-store-model-config.yaml
+snap-store-assertions: |-
+  type: store
+  ...
+snap-store-proxy: <store-id>
+EOF
+juju model-config snap-store-model-config.yaml
+
+# Finally deploy the cluster
 juju deploy {{deploy_args}}
