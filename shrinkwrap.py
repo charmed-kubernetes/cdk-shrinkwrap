@@ -13,6 +13,7 @@ from subprocess import check_call, check_output, Popen, STDOUT, PIPE, CalledProc
 import sys
 from typing import Optional
 
+import jinja2
 import requests
 import semver
 import yaml
@@ -436,52 +437,33 @@ def build_offline_bundle(root, charms: BundleDownloader):
             deploy_args += " --trust"
 
     push_snaps = root / "push_snaps.sh"
-    with push_snaps.open("w") as fp:
-        fp.write("#!/bin/bash\n")
-        fp.write("\n")
-        for snap in (root / "snaps").glob("**/*.tar.gz"):
-            fp.write(f"snap-store-proxy push-snap {local_path(snap)}\n")
-        fp.write("\n")
+    push_snaps_tmp = Path(__file__).parent / "templates" / "push_snaps.sh.j2"
+    template = jinja2.Template(push_snaps_tmp.read_text())
+    push_snaps.write_text(template.render(snaps=[local_path(snap) for snap in (root / "snaps").glob("**/*.tar.gz")]))
     push_snaps.chmod(mode=0o755)
 
+    containers_path = root / "containers"
     push_containers = root / "push_container_images.sh"
-    with push_containers.open("w") as fp:
-        fp.write("#!/bin/bash\n")
-        fp.write("\n")
-        fp.write(
-            "if [ -z ${DOCKER_REGISTRY+x} ]; then \n"
-            '    echo "DOCKER_REGISTRY is unset; \n'
-            "    exit -1; \n"
-            "fi\n\n"
+    push_containers_tmp = Path(__file__).parent / "templates" / "push_container_images.sh.j2"
+    template = jinja2.Template(push_containers_tmp.read_text())
+    push_containers.write_text(
+        template.render(
+            containers={
+                f"{container_tgz.relative_to(containers_path)}".replace(".tar.gz", ""): local_path(container_tgz)
+                for container_tgz in containers_path.glob("**/*.tar.gz")
+            },
+            IMAGE_REPO=ContainerDownloader.IMAGE_REPO,
         )
-        containers_path = root / "containers"
-        for container_tgz in containers_path.glob("**/*.tar.gz"):
-            image = str(container_tgz.relative_to(containers_path)).replace(".tar.gz", "")
-            fp.write(f"echo Push {image} to $DOCKER_REGISTRY\n")
-            fp.write(f"docker load < {local_path(container_tgz)}\n")
-            fp.write(f"docker tag {ContainerDownloader.IMAGE_REPO}{image} $DOCKER_REGISTRY/{image}\n")
-            fp.write(f"docker image push $DOCKER_REGISTRY/{image}\n")
-            fp.write(f"docker image remove {ContainerDownloader.IMAGE_REPO}{image}\n")
-            fp.write(f"docker image remove $DOCKER_REGISTRY/{image}\n\n")
-        fp.write("\n")
+    )
     push_containers.chmod(mode=0o755)
 
     deploy_readme = root / "README"
-    with deploy_readme.open("w") as fp:
-        fp.write("# on the machine set as the snap-store-proxy\n")
-        fp.write("./push_snaps.sh\n")
-
-        fp.write("# in the context of the container registry\n")
-        fp.write("# define DOCKER_REGISTRY environment variable (ie. localhost:5000)\n")
-        fp.write("./push_container_images.sh\n")
-
-        fp.write("# once the juju model is set to point to the container and snap-store-proxy\n")
-        fp.write(f"echo juju deploy{deploy_args}")
+    readme_tmp = Path(__file__).parent / "templates" / "README.j2"
+    template = jinja2.Template(readme_tmp.read_text())
+    deploy_readme.write_text(template.render(deploy_args=deploy_args))
 
     deploy_sh = root / "deploy.sh"
-    with deploy_sh.open("w") as fp:
-        fp.write("#!/bin/bash\n")
-        fp.write("cat ./README\n")
+    deploy_sh.write_text("#!/bin/bash\n" "cat ./README\n")
     deploy_sh.chmod(mode=0o755)
 
 

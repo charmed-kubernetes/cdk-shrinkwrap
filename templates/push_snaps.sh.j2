@@ -1,0 +1,5 @@
+#!/bin/bash
+
+{% for snap in snaps %}
+snap-store-proxy push-snap {{snap}}
+{% endfor %}
