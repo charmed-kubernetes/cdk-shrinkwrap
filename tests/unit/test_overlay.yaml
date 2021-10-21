@@ -1,5 +1,7 @@
 description: Charmed Kubernetes overlay for unit testing.
 applications:
+  openstack-integrator:
+    charm: cs:~containers/openstack-integrator
   calico:
     charm: cs:~containers/calico
   flannel:

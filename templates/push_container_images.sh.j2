@@ -1,0 +1,14 @@
+#!/bin/bash
+if [ -z ${DOCKER_REGISTRY+x} ]; then
+    echo "DOCKER_REGISTRY is unset";
+    exit -1;
+fi
+
+{% for image, container_tgz in containers.items() %}
+echo Push {{image}} to $DOCKER_REGISTRY
+docker load < {{container_tgz}}
+docker tag {{IMAGE_REPO}}{{image}} $DOCKER_REGISTRY/{{image}}
+docker image push $DOCKER_REGISTRY/{{image}}
+docker image remove {{IMAGE_REPO}}{{image}}
+docker image remove $DOCKER_REGISTRY/{{image}}
+{% endfor %}

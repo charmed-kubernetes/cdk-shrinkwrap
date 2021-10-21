@@ -50,11 +50,22 @@ def test_build_offline_bundle(tmp_dir):
     readme = root / "README"
     assert readme.exists()
     text = readme.read_text()
-    assert text.count("docker load") == 3, f"{readme} doesn't include 'docker load'"
-    assert text.count("snap-store-proxy push-snap") == 2, f"{readme} doesn't include 'snap-store-proxy push-snap'"
     assert "juju deploy" in text, f"{readme} doesn't include 'juju deploy'"
     for bundle in charms.bundles:
         assert bundle in text, f"{readme} doesn't include {bundle}"
+
+    push_containers = root / "push_container_images.sh"
+    assert push_containers.exists()
+    text = push_containers.read_text()
+    assert text.count("docker load") == 3, f"{push_containers} doesn't include 'docker load'"
+    assert text.count("docker tag") == 3, f"{push_containers} doesn't include 'docker tag'"
+    assert text.count("docker image push") == 3, f"{push_containers} doesn't include 'docker image push'"
+    assert text.count("docker image remove") == 6, f"{push_containers} doesn't include 'docker image push'"
+
+    push_snaps = root / "push_snaps.sh"
+    assert push_snaps.exists()
+    text = push_snaps.read_text()
+    assert text.count("snap-store-proxy push-snap") == 2, f"{push_snaps} doesn't include 'snap-store-proxy push-snap'"
 
     deploy_sh = root / "deploy.sh"
     assert deploy_sh.exists()

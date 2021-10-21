@@ -1,10 +1,10 @@
 #!/bin/bash
 
-lxc launch ubuntu:20.04 shrinkwrap
-# Required to run docker daemon in lxc (for a local docker registry)
-lxc config set shrinkwrap security.privileged true
-lxc file push ./shrinkwrap.py shrinkwrap/root/
+# LXC Requires privileged to run docker daemon
+lxc launch ubuntu:20.04 shrinkwrap -c security.privileged=true
 lxc file push ./requirements.txt shrinkwrap/root/
+lxc file push ./shrinkwrap.py shrinkwrap/root/
+lxc file push ./templates shrinkwrap/root/templates
 sleep 2
 
 function dependencies {

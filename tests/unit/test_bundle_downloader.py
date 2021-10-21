@@ -32,8 +32,11 @@ def test_bundle_downloader(tmp_dir, mock_ch_downloader, mock_cs_downloader):
     downloader = BundleDownloader(tmp_dir, args)
     assert downloader.bundle_path == Path(tmp_dir) / "charms" / ".bundle"
 
-    downloader.app_download("etcd", {"charm": "etcd", "channel": "latest/edge"})
-    downloader.app_download("containerd", {"charm": "cs:~containers/containerd-160"})
+    assert downloader.app_download("etcd", {"charm": "etcd", "channel": "latest/edge"}) == "etcd"
+    assert (
+        downloader.app_download("containerd", {"charm": "cs:~containers/containerd-160"})
+        == "cs:~containers/containerd-160"
+    )
     mock_ch_downloader.assert_called_once_with("etcd", "etcd", channel="latest/edge")
     mock_cs_downloader.assert_called_once_with("containerd", "~containers/containerd-160")
 
@@ -67,6 +70,7 @@ def test_bundle_downloader_properties(tmp_dir, mock_overlay_list):
     assert downloader.bundles["test-overlay.yaml"]["applications"].keys() == {
         "calico",
         "flannel",
+        "openstack-integrator",
     }
     assert downloader.applications.keys() == {
         "calico",
@@ -76,4 +80,5 @@ def test_bundle_downloader_properties(tmp_dir, mock_overlay_list):
         "flannel",
         "kubernetes-master",
         "kubernetes-worker",
+        "openstack-integrator",
     }

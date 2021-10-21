@@ -1,0 +1,9 @@
+# on the machine set as the snap-store-proxy
+./push_snaps.sh
+
+# in the context of the container registry
+# define DOCKER_REGISTRY environment variable (ie. localhost:5000)
+./push_container_images.sh
+
+# once the juju model is set to point to the container and snap-store-proxy
+juju deploy {{deploy_args}}

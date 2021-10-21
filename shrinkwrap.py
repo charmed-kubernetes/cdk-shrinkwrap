@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+from contextlib import contextmanager
 import os
 from pathlib import Path
 import re
@@ -12,11 +13,20 @@ from subprocess import check_call, check_output, Popen, STDOUT, PIPE, CalledProc
 import sys
 from typing import Optional
 
+import jinja2
 import requests
 import semver
 import yaml
 
 shlx = shlex.split
+
+
+@contextmanager
+def status(msg):
+    sys.stdout.write(f"    {msg} ... ")
+    sys.stdout.flush()
+    yield
+    print("done")
 
 
 def remove_prefix(str_o, prefix):
@@ -44,6 +54,7 @@ def get_args():
         action="append",
         help="Set of overlays to apply to the base bundle.",
     )
+    parser.add_argument("--skip-tar-gz", action="store_true", help="Skip creating a tar.gz in the ./build folder")
     return parser.parse_args()
 
 
@@ -123,32 +134,30 @@ class BundleDownloader(Downloader):
         if ch:
             channel = app.get("channel")
             self._charmhub_downloader(appname, remove_prefix(charm, "ch:"), channel=channel)
-            charm_id = charm
         else:
             self._charmstore_downloader(appname, remove_prefix(charm, "cs:"))
-            charm_id = charm.rpartition("-")[0]
-        return charm_id
+        return charm
 
     def _charmhub_downloader(self, name, resource, channel=None, arch=None):
-        print(f'    Downloading "{resource}" from charm hub...')
-        download_args, rsc_target = self.to_args(self.path / name, channel, arch)
-        rsc_target.mkdir(parents=True, exist_ok=True)
-        check_output(
-            shlx(f"juju download {resource}{download_args} --filepath /tmp/archive.zip"),
-            stderr=STDOUT,
-        )
+        with status(f'    Downloading "{resource}" from charm hub'):
+            download_args, rsc_target = self.to_args(self.path / name, channel, arch)
+            rsc_target.mkdir(parents=True, exist_ok=True)
+            check_output(
+                shlx(f"juju download {resource}{download_args} --filepath /tmp/archive.zip"),
+                stderr=STDOUT,
+            )
         check_call(shlx(f"unzip -qq /tmp/archive.zip -d {rsc_target}"))
         check_call(shlx("rm /tmp/archive.zip"))
         return rsc_target
 
     def _charmstore_downloader(self, name, resource):
-        print(f'    Downloading "{resource}" from charm store...')
-        charmstore_url = "https://api.jujucharms.com/charmstore/v5"
-        check_call(shlx(f"wget --quiet {charmstore_url}/{resource}/archive -O /tmp/archive.zip"))
-        rsc_target = self.path / name
-        rsc_target.mkdir(parents=True, exist_ok=True)
-        check_call(shlx(f"unzip -qq /tmp/archive.zip -d {rsc_target}"))
-        check_call(shlx("rm /tmp/archive.zip"))
+        with status(f'    Downloading "{resource}" from charm store'):
+            charmstore_url = "https://api.jujucharms.com/charmstore/v5"
+            check_call(shlx(f"wget --quiet {charmstore_url}/{resource}/archive -O /tmp/archive.zip"))
+            rsc_target = self.path / name
+            rsc_target.mkdir(parents=True, exist_ok=True)
+            check_call(shlx(f"unzip -qq /tmp/archive.zip -d {rsc_target}"))
+            check_call(shlx("rm /tmp/archive.zip"))
         return rsc_target
 
 
@@ -172,10 +181,9 @@ class OverlayDownloader(Downloader):
 
     def download(self, overlay):
         overlay_url = self.list[overlay]
-        sys.stdout.write(f'    Downloading "{overlay}" from {overlay_url} ...')
-        with (self.path / overlay).open("w") as fp:
-            fp.write(requests.get(overlay_url).text)
-        print("Done")
+        with status(f'    Downloading "{overlay_url}" from github'):
+            with (self.path / overlay).open("w") as fp:
+                fp.write(requests.get(overlay_url).text)
 
 
 class ContainerDownloader(Downloader):
@@ -220,13 +228,12 @@ class ContainerDownloader(Downloader):
         target = Path(f"{self.path / image}.tar.gz")
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("wb") as fp:
-            sys.stdout.write(f'    Downloading "{image}" from {self.IMAGE_REPO}...')
-            check_call(shlx(f"docker pull -q {image_src}"))
-            p1 = Popen(shlx(f"docker save {image_src}"), stdout=PIPE)
-            p2 = Popen(shlx("gzip"), stdin=p1.stdout, stdout=fp)
-            p1.stdout.close()
-            p2.communicate()
-            print("done")
+            with status(f'    Downloading "{image}" from {self.IMAGE_REPO}'):
+                check_call(shlx(f"docker pull -q {image_src}"))
+                p1 = Popen(shlx(f"docker save {image_src}"), stdout=PIPE)
+                p2 = Popen(shlx("gzip"), stdin=p1.stdout, stdout=fp)
+                p1.stdout.close()
+                p2.communicate()
 
     def _image_delete(self, image):
         image_src = f"{self.IMAGE_REPO}{image}"
@@ -236,8 +243,9 @@ class ContainerDownloader(Downloader):
         revisions = self.revisions(channel)
         assert revisions, f"No revisions matched the channel {channel}"
         _, latest_url = revisions[-1]
-        print(f'    Downloading "{latest_url}" from github...')
-        images = requests.get(latest_url).text.splitlines()
+
+        with status(f'    Downloading "{latest_url}" from github'):
+            images = requests.get(latest_url).text.splitlines()
         for container_image in images:
             self._image_save(container_image)
         for container_image in images:
@@ -269,12 +277,11 @@ class SnapDownloader(Downloader):
     def download(self, snap, channel, arch) -> Path:
         snap_key = (snap, channel, arch)
         if snap_key not in self._downloaded:
-            sys.stdout.write(f'    Downloading snap "{snap}" from snap store...')
-            download_args, snap_target = self.to_args(self.path / snap, channel, arch)
-            snap_target.mkdir(parents=True, exist_ok=True)
-            tgz = self._fetch_snap(snap, download_args)
-            check_call(shlx(f"mv {tgz} {snap_target}"))
-            print("done")
+            with status(f'    Downloading snap "{snap}" from snap store'):
+                download_args, snap_target = self.to_args(self.path / snap, channel, arch)
+                snap_target.mkdir(parents=True, exist_ok=True)
+                tgz = self._fetch_snap(snap, download_args)
+                check_call(shlx(f"mv {tgz} {snap_target}"))
             self._downloaded[snap_key] = snap_target
         return self._downloaded[snap_key]
 
@@ -301,8 +308,8 @@ class ResourceDownloader(Downloader):
             raise NotImplementedError("Charmhub doesn't support fetching resources")
         else:
             url = f"{self.URL}/{remove_prefix(charm, 'cs:')}/resource/{name}/{revision}"
-            print(f"    Downloading resource {name} from charm store revision {revision}...")
-            check_call(shlx(f"wget --quiet {url} -O {target}"))
+            with status(f"    Downloading resource {name} from charm store revision {revision}"):
+                check_call(shlx(f"wget --quiet {url} -O {target}"))
         return target
 
 
@@ -338,7 +345,7 @@ def download(args, root):
         charm = charms.app_download(app_name, app)
 
         app_channel = charm_channel(app, root / "charms" / app_name)
-        if charm.endswith("kubernetes-master"):
+        if "kubernetes-master" in charm:
             k8s_master_channel = app_channel
 
         # Download each resource or snap.
@@ -429,26 +436,34 @@ def build_offline_bundle(root, charms: BundleDownloader):
         if is_trusted:
             deploy_args += " --trust"
 
+    push_snaps = root / "push_snaps.sh"
+    push_snaps_tmp = Path(__file__).parent / "templates" / "push_snaps.sh.j2"
+    template = jinja2.Template(push_snaps_tmp.read_text())
+    push_snaps.write_text(template.render(snaps=[local_path(snap) for snap in (root / "snaps").glob("**/*.tar.gz")]))
+    push_snaps.chmod(mode=0o755)
+
+    containers_path = root / "containers"
+    push_containers = root / "push_container_images.sh"
+    push_containers_tmp = Path(__file__).parent / "templates" / "push_container_images.sh.j2"
+    template = jinja2.Template(push_containers_tmp.read_text())
+    push_containers.write_text(
+        template.render(
+            containers={
+                f"{container_tgz.relative_to(containers_path)}".replace(".tar.gz", ""): local_path(container_tgz)
+                for container_tgz in containers_path.glob("**/*.tar.gz")
+            },
+            IMAGE_REPO=ContainerDownloader.IMAGE_REPO,
+        )
+    )
+    push_containers.chmod(mode=0o755)
+
     deploy_readme = root / "README"
-    with deploy_readme.open("w") as fp:
-        fp.write("# on the machine set as the snap-store-proxy\n")
-
-        for snap in (root / "snaps").glob("**/*.tar.gz"):
-            fp.write(f"snap-store-proxy push-snap {local_path(snap)}\n")
-        fp.write("\n")
-
-        fp.write("# on the machine set as the container registry\n")
-        for container in (root / "containers").glob("**/*.tar.gz"):
-            fp.write(f"docker load < {local_path(container)}\n")
-        fp.write("\n")
-
-        fp.write("# once the juju model is set to point to the container and snap-store-proxy\n")
-        fp.write(f"echo juju deploy{deploy_args}")
+    readme_tmp = Path(__file__).parent / "templates" / "README.j2"
+    template = jinja2.Template(readme_tmp.read_text())
+    deploy_readme.write_text(template.render(deploy_args=deploy_args))
 
     deploy_sh = root / "deploy.sh"
-    with deploy_sh.open("w") as fp:
-        fp.write("#!/bin/bash\n")
-        fp.write("cat ./README\n")
+    deploy_sh.write_text("#!/bin/bash\n" "cat ./README\n")
     deploy_sh.chmod(mode=0o755)
 
 
@@ -473,15 +488,14 @@ def main():
         bundle = BundleDownloader(root, args)
 
     # Generate a new bundle.yaml for deployment
-    sys.stdout.write("Writing offline bundle.yaml ...")
-    build_offline_bundle(root, bundle)
-    print("done")
+    with status("Writing offline bundle.yaml"):
+        build_offline_bundle(root, bundle)
 
     # Make the tarball.
-    sys.stdout.write("Writing tarball ...")
-    check_call(shlx(f'tar -czf {root}.tar.gz -C build/ {root.relative_to("build")} --force-local'))
-    shutil.rmtree(root)
-    print("done")
+    if not args.skip_tar_gz:
+        with status(f"Writing tarball {root}.tar.gz"):
+            check_call(shlx(f'tar -czf {root}.tar.gz -C build/ {root.relative_to("build")} --force-local'))
+            shutil.rmtree(root)
 
 
 if __name__ == "__main__":
