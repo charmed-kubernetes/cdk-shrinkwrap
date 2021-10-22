@@ -7,8 +7,8 @@ fi
 {% for image, container_tgz in containers.items() %}
 echo Push {{image}} to $DOCKER_REGISTRY
 docker load < {{container_tgz}}
-docker tag {{IMAGE_REPO}}{{image}} $DOCKER_REGISTRY/{{image}}
-docker image push $DOCKER_REGISTRY/{{image}}
+docker tag {{IMAGE_REPO}}{{image}} $DOCKER_REGISTRY/cdk/{{image}}
+docker image push $DOCKER_REGISTRY/cdk/{{image}}
 docker image remove {{IMAGE_REPO}}{{image}}
-docker image remove $DOCKER_REGISTRY/{{image}}
+docker image remove $DOCKER_REGISTRY/cdk/{{image}}
 {% endfor %}
