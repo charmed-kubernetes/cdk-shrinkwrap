@@ -378,7 +378,7 @@ def download(args, root):
                 revision = resource["Revision"]
                 resource["filepath"] = resources.download(charm, name, revision, path)
 
-    base_snaps = ["core18", "core20"]
+    base_snaps = ["core18", "core20", "lxd", "snapd"]
     for snap in base_snaps:
         snaps.download(snap, "stable", None)
 

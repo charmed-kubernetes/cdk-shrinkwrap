@@ -1,24 +1,11 @@
-# on the machine set as the snap-store-proxy
-./push_snaps.sh
+# Snap Store Proxy
+todo if using air-gapped snap-store-proxy
 
-# in the context of the container registry
-# define DOCKER_REGISTRY environment variable (ie. localhost:5000)
-./push_container_images.sh
+## on the machine set as the snap-store-proxy ()
+`./push_snaps.sh`
 
-# update the provided bundle to use the container registry (if using on-prem container registry)
-edit ./bundle.yaml
+## set the juju model *snap-store-proxy*
 ```
-  containerd:
-    annotations:
-      gui-x: '475'
-      gui-y: '800'
-    charm: ./charms/containerd
-    options:
-      custom_registries: '[{"host": "rocks.canonical.com:443", "url": "http://my.custom.registry:5000"}]'   # point to your docker registry
-```
-
-# and snap-store-proxy (if using on-prem snaps)
-
 cat << EOF >> snap-store-model-config.yaml
 snap-store-assertions: |-
   type: store
@@ -26,6 +13,30 @@ snap-store-assertions: |-
 snap-store-proxy: <store-id>
 EOF
 juju model-config snap-store-model-config.yaml
+```
 
-# Finally deploy the cluster
+# Private Container Registry
+todo if using on-prem container registry
+
+## push necessary containers to the registry
+define DOCKER_REGISTRY environment variable
+```
+export DOCKER_REGISTRY=my.custom.registry:5000
+./push_container_images.sh
+```
+
+## update the provided bundle to use the container registry
+edit ./bundle.yaml
+```
+  containerd:
+    options:                     # add this to add your offsite docker registry
+      custom_registries: '[{"host": "my.custom.registry:5000", "url": "http://my.custom.registry:5000"}]'
+  kubernetes-master:
+    options:                     # add this to add indicate that CDK images are found in the custom registry
+      image-registry: my.custom.registry:5000/cdk
+```
+
+# Juju Deployment
+```
 juju deploy {{deploy_args}}
+```
