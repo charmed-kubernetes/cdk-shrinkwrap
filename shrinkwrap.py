@@ -323,7 +323,7 @@ def charm_channel(app, charm_path) -> str:
             channel = "auto"
 
     if channel == "auto":
-        channel = "latest/stable"
+        channel = "stable"
 
     # Check if there's a channel override in the bundle
     try:
@@ -378,6 +378,10 @@ def download(args, root):
                 revision = resource["Revision"]
                 resource["filepath"] = resources.download(charm, name, revision, path)
 
+    base_snaps = ["core18", "core20", "lxd", "snapd"]
+    for snap in base_snaps:
+        snaps.download(snap, "stable", None)
+
     if k8s_master_channel:
         # Download the Container Images based on the kubernetes-master channel
         print("Containers")
@@ -429,9 +433,9 @@ def build_offline_bundle(root, charms: BundleDownloader):
         is_overlay = bundle_name != "bundle.yaml"
 
         if is_overlay:
-            deploy_args += f" --overlay {bundle_name}"
+            deploy_args += f" --overlay ./{bundle_name}"
         else:
-            deploy_args += f" {bundle_name}"
+            deploy_args += f" ./{bundle_name}"
 
         if is_trusted:
             deploy_args += " --trust"

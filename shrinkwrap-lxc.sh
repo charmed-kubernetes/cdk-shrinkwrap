@@ -4,7 +4,7 @@
 lxc launch ubuntu:20.04 shrinkwrap -c security.privileged=true
 lxc file push ./requirements.txt shrinkwrap/root/
 lxc file push ./shrinkwrap.py shrinkwrap/root/
-lxc file push ./templates shrinkwrap/root/templates
+lxc file push -p -r ./templates shrinkwrap/root/
 sleep 2
 
 function dependencies {
@@ -17,8 +17,7 @@ function dependencies {
 
 dependencies
 lxc exec shrinkwrap -- /root/shrinkwrap.py $@
-mkdir -p ./build/
-lxc file pull --recursive 'shrinkwrap/root/build/' .
+lxc file pull -p -r 'shrinkwrap/root/build/' .
 
 echo '# on success -- delete the container'
 echo 'lxc stop shrinkwrap && lxc rm shrinkwrap'
