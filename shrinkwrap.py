@@ -3,6 +3,7 @@
 import argparse
 import datetime
 from contextlib import contextmanager
+from io import BytesIO
 import os
 from pathlib import Path
 import re
@@ -12,6 +13,7 @@ import shutil
 from subprocess import check_call, check_output, Popen, STDOUT, PIPE, CalledProcessError
 import sys
 from typing import Optional
+import zipfile
 
 import jinja2
 import requests
@@ -138,27 +140,39 @@ class BundleDownloader(Downloader):
             self._charmstore_downloader(appname, remove_prefix(charm, "cs:"))
         return charm
 
+    @staticmethod
+    def _charmhub_refresh(name, channel, architecture):
+        channel = channel or "stable"
+        architecture = architecture or "amd64"
+        data = {
+            "context": [],
+            "actions": [
+                {
+                    "name": name,
+                    "base": {"name": "ubuntu", "architecture": architecture, "channel": channel},
+                    "action": "install",
+                    "instance-key": "shrinkwrap",
+                }
+            ],
+        }
+        resp = requests.post("https://api.charmhub.io/v2/charms/refresh", json=data)
+        return resp.json()
+
     def _charmhub_downloader(self, name, resource, channel=None, arch=None):
+        _, rsc_target = self.to_args(self.path / name, channel, arch)
         with status(f'    Downloading "{resource}" from charm hub'):
-            download_args, rsc_target = self.to_args(self.path / name, channel, arch)
-            rsc_target.mkdir(parents=True, exist_ok=True)
-            check_output(
-                shlx(f"juju download {resource}{download_args} --filepath /tmp/archive.zip"),
-                stderr=STDOUT,
-            )
-        check_call(shlx(f"unzip -qq /tmp/archive.zip -d {rsc_target}"))
-        check_call(shlx("rm /tmp/archive.zip"))
-        return rsc_target
+            refreshed = self._charmhub_refresh(resource, channel, arch)
+            url = refreshed["results"][0]["charm"]["download"]["url"]
+            resp = requests.get(url)
+            return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
 
     def _charmstore_downloader(self, name, resource):
         with status(f'    Downloading "{resource}" from charm store'):
             charmstore_url = "https://api.jujucharms.com/charmstore/v5"
-            check_call(shlx(f"wget --quiet {charmstore_url}/{resource}/archive -O /tmp/archive.zip"))
+            resp = requests.get(f"{charmstore_url}/{resource}/archive")
             rsc_target = self.path / name
             rsc_target.mkdir(parents=True, exist_ok=True)
-            check_call(shlx(f"unzip -qq /tmp/archive.zip -d {rsc_target}"))
-            check_call(shlx("rm /tmp/archive.zip"))
-        return rsc_target
+            return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
 
 
 class OverlayDownloader(Downloader):
