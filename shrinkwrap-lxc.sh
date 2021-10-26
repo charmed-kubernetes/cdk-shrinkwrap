@@ -12,7 +12,7 @@ function dependencies {
   lxc exec shrinkwrap -- apt install -y python3-pip unzip docker.io
   lxc exec shrinkwrap -- pip install -r /root/requirements.txt
   lxc exec shrinkwrap -- snap install juju --classic
-  lxc exec shrinkwrap -- snap install snap-store-proxy --classic
+  lxc exec shrinkwrap -- snap install snap-store-proxy
 }
 
 dependencies

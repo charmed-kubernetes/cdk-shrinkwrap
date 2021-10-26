@@ -14,6 +14,9 @@ import mock
 def test_download_method(resource_list, resource_dl, snap_dl, app_dl, tmp_dir):
     args = mock.MagicMock()
     args.overlay = []
+    args.skip_snaps = False
+    args.skip_resources = False
+    args.skip_containers = False
     root = Path(tmp_dir)
     app_name = "etcd"
 
@@ -62,11 +65,6 @@ def test_download_method(resource_list, resource_dl, snap_dl, app_dl, tmp_dir):
 
     app_dl.assert_called_once_with(app_name, charms.applications[app_name])
     resource_list.assert_called_once_with(app_dl.return_value, args.channel)
-    snap_dl.assert_has_calls(
-        [
-            mock.call("core", "stable", args.arch),
-            mock.call("etcd", "3.4/stable", args.arch),
-        ]
-    )
-    resource_dl.assert_has_calls([mock.call(app_dl.return_value, "snapshot", 0, "snapshot.tar.gz")])
+    snap_dl.assert_called_once()
+    resource_dl.assert_called_once()
     assert (Path(tmp_dir) / "resources" / "etcd" / "etcd" / "etcd.snap").is_symlink()

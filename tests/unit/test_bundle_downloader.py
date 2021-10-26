@@ -29,22 +29,24 @@ def test_bundle_downloader(tmp_dir, mock_ch_downloader, mock_cs_downloader):
     args = mock.MagicMock()
     args.bundle = "cs:kubernetes-unit-test"
     args.overlay = []
+    charms_path = Path(tmp_dir) / "charms"
+
     downloader = BundleDownloader(tmp_dir, args)
-    assert downloader.bundle_path == Path(tmp_dir) / "charms" / ".bundle"
+    assert downloader.bundle_path == charms_path / ".bundle"
 
     assert downloader.app_download("etcd", {"charm": "etcd", "channel": "latest/edge"}) == "etcd"
     assert (
         downloader.app_download("containerd", {"charm": "cs:~containers/containerd-160"})
         == "cs:~containers/containerd-160"
     )
-    mock_ch_downloader.assert_called_once_with("etcd", "etcd", channel="latest/edge")
-    mock_cs_downloader.assert_called_once_with("containerd", "~containers/containerd-160")
+    mock_ch_downloader.assert_called_once_with("etcd", charms_path / "etcd", channel="latest/edge")
+    mock_cs_downloader.assert_called_once_with("~containers/containerd-160", charms_path / "containerd")
 
     mock_ch_downloader.reset_mock()
     mock_cs_downloader.reset_mock()
     downloader.bundle_download()
     mock_ch_downloader.assert_not_called()
-    mock_cs_downloader.assert_called_once_with(".bundle", "kubernetes-unit-test")
+    mock_cs_downloader.assert_called_once_with("kubernetes-unit-test", downloader.bundle_path)
 
 
 def test_bundle_downloader_properties(tmp_dir, mock_overlay_list):
