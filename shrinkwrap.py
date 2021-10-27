@@ -29,16 +29,23 @@ def status(msg):
     print("done")
 
 
-def remove_prefix(str_o, prefix):
+def _remove_suffix(str_o, suffix):
+    if str_o.endswith(suffix):
+        return str_o[: -len(suffix)]
+    return str_o
+
+
+def _remove_prefix(str_o, prefix):
     if str_o.startswith(prefix):
         return str_o[len(prefix) :]  # noqa: E203 whitespace before ':'
     return str_o
 
 
-def remove_suffix(str_o, suffix):
-    if str_o.endswith(suffix):
-        return str_o[: -len(suffix)]
-    return str_o
+if not hasattr(str, "removesuffix"):
+    str.removesuffix = _remove_suffix
+
+if not hasattr(str, "removeprefix"):
+    str.removeprefix = _remove_prefix
 
 
 def get_args():
@@ -124,18 +131,18 @@ class BundleDownloader(Downloader):
         bundle = self.args.bundle
         ch = bundle.startswith("ch:") or not bundle.startswith("cs:")
         if ch:
-            self._charmhub_downloader(".bundle", remove_prefix(bundle, "ch:"), channel=self.args.channel)
+            self._charmhub_downloader(".bundle", bundle.removeprefix("ch:"), channel=self.args.channel)
         else:
-            self._charmstore_downloader(".bundle", remove_prefix(bundle, "cs:"))
+            self._charmstore_downloader(".bundle", bundle.removeprefix("cs:"))
 
     def app_download(self, appname: str, app: dict):
         charm = app["charm"]
         ch = charm.startswith("ch:") or not charm.startswith("cs:")
         if ch:
             channel = app.get("channel")
-            self._charmhub_downloader(appname, remove_prefix(charm, "ch:"), channel=channel)
+            self._charmhub_downloader(appname, charm.removeprefix("ch:"), channel=channel)
         else:
-            self._charmstore_downloader(appname, remove_prefix(charm, "cs:"))
+            self._charmstore_downloader(appname, charm.removeprefix("cs:"))
         return charm
 
     def _charmhub_downloader(self, name, resource, channel=None, arch=None):
@@ -215,7 +222,7 @@ class ContainerDownloader(Downloader):
         resp = requests.get(self.URL, headers={"Accept": "application/vnd.github.v3+json"})
         versions = [
             (
-                remove_suffix(remove_prefix(obj.get("name"), "v"), ".txt"),
+                obj["name"].removeprefix("v").removesuffix(".txt"),
                 obj.get("download_url"),
             )
             for obj in resp.json()
@@ -295,7 +302,7 @@ class ResourceDownloader(Downloader):
             raise NotImplementedError("Fetching of resources from Charmhub not supported.")
         else:
             resp = requests.get(
-                f"{self.URL}/{remove_prefix(charm, 'cs:')}/meta/resources",
+                f"{self.URL}/{charm.removeprefix('cs:')}/meta/resources",
                 params={"channel": channel},
             )
         return resp.json()
@@ -307,7 +314,7 @@ class ResourceDownloader(Downloader):
         if ch:
             raise NotImplementedError("Charmhub doesn't support fetching resources")
         else:
-            url = f"{self.URL}/{remove_prefix(charm, 'cs:')}/resource/{name}/{revision}"
+            url = f"{self.URL}/{charm.removeprefix('cs:')}/resource/{name}/{revision}"
             with status(f"    Downloading resource {name} from charm store revision {revision}"):
                 check_call(shlx(f"wget --quiet {url} -O {target}"))
         return target
