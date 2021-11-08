@@ -46,7 +46,7 @@ def remove_suffix(str_o, suffix):
 def get_args():
     """Parse cli arguments."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("bundle", type=str, nargs="?", help="the bundle to shrinkwrap")
+    parser.add_argument("bundle", type=str, help="the bundle to shrinkwrap")
     parser.add_argument("--channel", "-c", default=None, help="the channel of the bundle")
     parser.add_argument("--arch", "-a", default=None, help="the target architecture of the bundle")
     parser.add_argument(
