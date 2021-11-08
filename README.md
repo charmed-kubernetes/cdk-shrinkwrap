@@ -37,7 +37,6 @@ optional arguments:
 
 ## Dependencies
 ### Deb Packages
-- unzip
 - python3.8
 - docker.io
 
@@ -46,10 +45,11 @@ optional arguments:
 - `requests`
 - `pyyaml`
 - `semver`
+- `jinja2`
+- `retry`
 
 ### Necessary Snaps 
 
-- `juju`
 - `snap-store-proxy`
 
 [offline-docs-page]: https://ubuntu.com/kubernetes/docs/install-offline
