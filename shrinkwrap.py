@@ -178,8 +178,8 @@ class BundleDownloader(Downloader):
     def _charmstore_downloader(self, name, target):
         with status(f'Downloading "{name}" from charm store'):
             _, rsc_target = self.to_args(target)
-            charmstore_url = "https://api.jujucharms.com/charmstore/v5"
-            resp = requests.get(f"{charmstore_url}/{name}/archive")
+            url = f"https://api.jujucharms.com/charmstore/v5/{name}/archive"
+            resp = requests.get(url)
             return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
 
 
