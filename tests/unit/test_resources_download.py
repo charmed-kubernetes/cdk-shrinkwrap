@@ -19,7 +19,7 @@ def mock_wget_cmd():
 
 
 def test_resource_downloader(tmp_dir, mock_requests, mock_wget_cmd):
-    downloader = ResourceDownloader(Path(tmp_dir) / "resources" / "etcd")
+    downloader = ResourceDownloader(tmp_dir)
     assert downloader.path.exists(), "Resource path doesn't exist"
 
     with pytest.raises(NotImplementedError) as ie:
@@ -32,6 +32,9 @@ def test_resource_downloader(tmp_dir, mock_requests, mock_wget_cmd):
         params={"channel": "latest/stable"},
     )
 
-    target = downloader.download("cs:etcd", "snapshot", 0, "snapshot.tar.gz")
-    assert target.parent.exists(), "Target path not created"
+    target = downloader.mark_download("etcd", "cs:etcd", "snapshot", 0, "snapshot.tar.gz")
     assert target == Path(tmp_dir) / "resources" / "etcd" / "snapshot" / "snapshot.tar.gz"
+    assert not target.parent.exists()
+
+    downloader.download()
+    assert target.parent.exists(), "Target path not created"

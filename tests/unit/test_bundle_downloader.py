@@ -31,7 +31,8 @@ def mock_cs_downloader():
 @mock.patch("shrinkwrap.zipfile.ZipFile")
 def test_charmhub_downloader(mock_zipfile, mock_post, mock_get, tmp_dir):
     args = mock.MagicMock()
-    args.bundle = "cs:kubernetes-unit-test"
+    args.bundle = "ch:kubernetes-unit-test"
+    args.channel = None
     args.overlay = []
 
     bundle_mock_url = mock.MagicMock()
@@ -40,7 +41,7 @@ def test_charmhub_downloader(mock_zipfile, mock_post, mock_get, tmp_dir):
     mock_get.return_value.content = b"bytes-values"
 
     downloader = BundleDownloader(tmp_dir, args)
-    result = downloader._charmhub_downloader(".bundle", "my-bundle")
+    result = downloader.bundle_download()
     assert result is mock_downloaded
     mock_post.assert_called_once_with(
         "https://api.charmhub.io/v2/charms/refresh",
@@ -48,7 +49,7 @@ def test_charmhub_downloader(mock_zipfile, mock_post, mock_get, tmp_dir):
             "context": [],
             "actions": [
                 {
-                    "name": "my-bundle",
+                    "name": "kubernetes-unit-test",
                     "base": {"name": "ubuntu", "architecture": "amd64", "channel": "stable"},
                     "action": "install",
                     "instance-key": "shrinkwrap",
@@ -72,9 +73,9 @@ def test_charmstore_downloader(mock_zipfile, mock_get, tmp_dir):
     mock_get.return_value.content = b"bytes-values"
 
     downloader = BundleDownloader(tmp_dir, args)
-    result = downloader._charmstore_downloader(".bundle", "my-bundle")
+    result = downloader.bundle_download()
     assert result is mock_downloaded
-    mock_get.assert_called_once_with("https://api.jujucharms.com/charmstore/v5/my-bundle/archive")
+    mock_get.assert_called_once_with("https://api.jujucharms.com/charmstore/v5/kubernetes-unit-test/archive")
     mock_zipfile.assert_called_once()
     assert isinstance(mock_zipfile.call_args.args[0], BytesIO)
 
@@ -83,22 +84,24 @@ def test_bundle_downloader(tmp_dir, mock_ch_downloader, mock_cs_downloader):
     args = mock.MagicMock()
     args.bundle = "cs:kubernetes-unit-test"
     args.overlay = []
+    charms_path = Path(tmp_dir) / "charms"
+
     downloader = BundleDownloader(tmp_dir, args)
-    assert downloader.bundle_path == Path(tmp_dir) / "charms" / ".bundle"
+    assert downloader.bundle_path == charms_path / ".bundle"
 
     assert downloader.app_download("etcd", {"charm": "etcd", "channel": "latest/edge"}) == "etcd"
     assert (
         downloader.app_download("containerd", {"charm": "cs:~containers/containerd-160"})
         == "cs:~containers/containerd-160"
     )
-    mock_ch_downloader.assert_called_once_with("etcd", "etcd", channel="latest/edge")
-    mock_cs_downloader.assert_called_once_with("containerd", "~containers/containerd-160")
+    mock_ch_downloader.assert_called_once_with("etcd", charms_path / "etcd", channel="latest/edge")
+    mock_cs_downloader.assert_called_once_with("~containers/containerd-160", charms_path / "containerd")
 
     mock_ch_downloader.reset_mock()
     mock_cs_downloader.reset_mock()
     downloader.bundle_download()
     mock_ch_downloader.assert_not_called()
-    mock_cs_downloader.assert_called_once_with(".bundle", "kubernetes-unit-test")
+    mock_cs_downloader.assert_called_once_with("kubernetes-unit-test", downloader.bundle_path)
 
 
 def test_bundle_downloader_properties(tmp_dir, mock_overlay_list):

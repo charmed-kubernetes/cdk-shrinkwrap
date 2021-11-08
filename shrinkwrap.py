@@ -49,13 +49,16 @@ def get_args():
     parser.add_argument("bundle", type=str, nargs="?", help="the bundle to shrinkwrap")
     parser.add_argument("--channel", "-c", default=None, help="the channel of the bundle")
     parser.add_argument("--arch", "-a", default=None, help="the target architecture of the bundle")
-    parser.add_argument("--use_path", "-d", default=None, help="Use existing root path.")
     parser.add_argument(
         "--overlay",
         default=list(),
         action="append",
         help="Set of overlays to apply to the base bundle.",
     )
+    parser.add_argument("--use_path", "-d", default=None, help="Reuse existing downloaded shrinkwrap path")
+    parser.add_argument("--skip-resources", action="store_true", help="Skip downloading attached charm resources")
+    parser.add_argument("--skip-snaps", action="store_true", help="Skip downloading required charm snaps")
+    parser.add_argument("--skip-containers", action="store_true", help="Skip downloading container images")
     parser.add_argument("--skip-tar-gz", action="store_true", help="Skip creating a tar.gz in the ./build folder")
     return parser.parse_args()
 
@@ -67,6 +70,7 @@ class Downloader:
         """
         self.path = Path(path)
         self.path.mkdir(parents=True, exist_ok=True)
+        self._downloaded = {}
 
     @staticmethod
     def to_args(target: Path, channel: Optional[str] = None, arch: Optional[str] = None):
@@ -102,11 +106,10 @@ class BundleDownloader(Downloader):
             ), f"{overlay} is not a valid overlay bundle, choose any from {self.overlays.list}"
 
         all_bundles = ["bundle.yaml"] + self.args.overlay
+        self.bundle_download()
 
         for bundle_name in all_bundles:
-            if not (self.bundle_path / "bundle.yaml").exists():
-                self.bundle_download()
-            elif not (self.bundle_path / bundle_name).exists():
+            if bundle_name != "bundle.yaml":
                 self.overlays.download(bundle_name)
             with (self.bundle_path / bundle_name).open() as fp:
                 bundle = yaml.safe_load(fp)
@@ -123,22 +126,28 @@ class BundleDownloader(Downloader):
         }
 
     def bundle_download(self):
-        bundle = self.args.bundle
-        ch = bundle.startswith("ch:") or not bundle.startswith("cs:")
-        if ch:
-            self._charmhub_downloader(".bundle", remove_prefix(bundle, "ch:"), channel=self.args.channel)
-        else:
-            self._charmstore_downloader(".bundle", remove_prefix(bundle, "cs:"))
+        bundle, channel = self.args.bundle, self.args.channel
+        return self._downloader(bundle, Path(".bundle") / "bundle.yaml", channel)
 
     def app_download(self, appname: str, app: dict):
-        charm = app["charm"]
-        ch = charm.startswith("ch:") or not charm.startswith("cs:")
-        if ch:
-            channel = app.get("channel")
-            self._charmhub_downloader(appname, remove_prefix(charm, "ch:"), channel=channel)
-        else:
-            self._charmstore_downloader(appname, remove_prefix(charm, "cs:"))
+        charm, channel = app["charm"], app.get("channel")
+        self._downloader(charm, Path(appname) / "metadata.yaml", channel)
         return charm
+
+    def _downloader(self, name, path, channel):
+        ch = name.startswith("ch:") or not name.startswith("cs:")
+        name = remove_prefix(remove_prefix(name, "ch:"), "cs:")
+        target = self.path / path
+        if target.exists():
+            print(f'    Downloaded "{name}" already exists')
+            return
+
+        target = target.parent
+        target.mkdir(parents=True, exist_ok=True)
+        if ch:
+            return self._charmhub_downloader(name, target, channel=channel)
+        else:
+            return self._charmstore_downloader(name, target)
 
     @staticmethod
     def _charmhub_refresh(name, channel, architecture):
@@ -158,20 +167,19 @@ class BundleDownloader(Downloader):
         resp = requests.post("https://api.charmhub.io/v2/charms/refresh", json=data)
         return resp.json()
 
-    def _charmhub_downloader(self, name, resource, channel=None, arch=None):
-        _, rsc_target = self.to_args(self.path / name, channel, arch)
-        with status(f'    Downloading "{resource}" from charm hub'):
-            refreshed = self._charmhub_refresh(resource, channel, arch)
+    def _charmhub_downloader(self, name, target, channel=None, arch=None):
+        with status(f'Downloading "{name}" from charm hub'):
+            _, rsc_target = self.to_args(target, channel, arch)
+            refreshed = self._charmhub_refresh(name, channel, arch)
             url = refreshed["results"][0]["charm"]["download"]["url"]
             resp = requests.get(url)
             return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
 
-    def _charmstore_downloader(self, name, resource):
-        with status(f'    Downloading "{resource}" from charm store'):
+    def _charmstore_downloader(self, name, target):
+        with status(f'Downloading "{name}" from charm store'):
+            _, rsc_target = self.to_args(target)
             charmstore_url = "https://api.jujucharms.com/charmstore/v5"
-            resp = requests.get(f"{charmstore_url}/{resource}/archive")
-            rsc_target = self.path / name
-            rsc_target.mkdir(parents=True, exist_ok=True)
+            resp = requests.get(f"{charmstore_url}/{name}/archive")
             return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
 
 
@@ -194,9 +202,13 @@ class OverlayDownloader(Downloader):
         return self._list_cache
 
     def download(self, overlay):
+        target = self.path / overlay
+        if target.exists():
+            print(f'    Downloaded "{overlay}" exists')
+            return
         overlay_url = self.list[overlay]
-        with status(f'    Downloading "{overlay_url}" from github'):
-            with (self.path / overlay).open("w") as fp:
+        with status(f'Downloading "{overlay_url}" from github'):
+            with target.open("w") as fp:
                 fp.write(requests.get(overlay_url).text)
 
 
@@ -242,7 +254,7 @@ class ContainerDownloader(Downloader):
         target = Path(f"{self.path / image}.tar.gz")
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("wb") as fp:
-            with status(f'    Downloading "{image}" from {self.IMAGE_REPO}'):
+            with status(f'Downloading "{image}" from {self.IMAGE_REPO}'):
                 check_call(shlx(f"docker pull -q {image_src}"))
                 p1 = Popen(shlx(f"docker save {image_src}"), stdout=PIPE)
                 p2 = Popen(shlx("gzip"), stdin=p1.stdout, stdout=fp)
@@ -254,11 +266,12 @@ class ContainerDownloader(Downloader):
         check_call(shlx(f"docker rmi {image_src}"))
 
     def download(self, channel):
+        print("Containers")
         revisions = self.revisions(channel)
         assert revisions, f"No revisions matched the channel {channel}"
         _, latest_url = revisions[-1]
 
-        with status(f'    Downloading "{latest_url}" from github'):
+        with status(f'Downloading "{latest_url}" from github'):
             images = requests.get(latest_url).text.splitlines()
         for container_image in images:
             self._image_save(container_image)
@@ -274,7 +287,6 @@ class SnapDownloader(Downloader):
         super().__init__(Path(root) / "snaps")
         self.empty_snap = self.path / ".empty.snap"
         self.empty_snap.touch(exist_ok=True)
-        self._downloaded = {}
 
     @retry(CalledProcessError, tries=3, delay=2)
     def _fetch_snap(self, snap, args):
@@ -288,20 +300,35 @@ class SnapDownloader(Downloader):
         check_call(shlx(f"chown {user}:{user} {tgz}"))
         return tgz
 
-    def download(self, snap, channel, arch) -> Path:
-        snap_key = (snap, channel, arch)
+    def mark_download(self, snap, channel, arch):
+        """
+        :rvalue: tuple[str, Path]
+        """
+        snap_key = snap, channel, arch
         if snap_key not in self._downloaded:
-            with status(f'    Downloading snap "{snap}" from snap store'):
-                download_args, snap_target = self.to_args(self.path / snap, channel, arch)
+            self._downloaded[snap_key] = self.to_args(self.path / snap, channel, arch)
+        return self._downloaded[snap_key]
+
+    def download(self):
+        print("Snaps")
+        for (snap, channel, arch), (download_args, snap_target) in self._downloaded.items():
+            if len(list(snap_target.glob("*.tar.gz"))):
+                print(f'    Downloaded snap "{snap}" exists')
+                continue
+            with status(f'Downloading snap "{snap}" from snap store'):
                 snap_target.mkdir(parents=True, exist_ok=True)
                 tgz = self._fetch_snap(snap, download_args)
                 check_call(shlx(f"mv {tgz} {snap_target}"))
-            self._downloaded[snap_key] = snap_target
-        return self._downloaded[snap_key]
 
 
 class ResourceDownloader(Downloader):
     URL = "https://api.jujucharms.com/charmstore/v5"
+
+    def __init__(self, root):
+        """
+        @param root: PathLike[str]
+        """
+        super().__init__(Path(root) / "resources")
 
     def list(self, charm, channel):
         ch = charm.startswith("ch:") or not charm.startswith("cs:")
@@ -314,17 +341,27 @@ class ResourceDownloader(Downloader):
             )
         return resp.json()
 
-    def download(self, charm, name, revision, filename):
-        (self.path / name).mkdir(parents=True, exist_ok=True)
-        ch = charm.startswith("ch:") or not charm.startswith("cs:")
-        target = self.path / name / filename
-        if ch:
-            raise NotImplementedError("Charmhub doesn't support fetching resources")
-        else:
-            url = f"{self.URL}/{remove_prefix(charm, 'cs:')}/resource/{name}/{revision}"
-            with status(f"    Downloading resource {name} from charm store revision {revision}"):
-                check_call(shlx(f"wget --quiet {url} -O {target}"))
-        return target
+    def mark_download(self, app, charm, name, revision, filename) -> Path:
+        resource_key = app, charm, name, revision, filename
+        if resource_key not in self._downloaded:
+            self._downloaded[resource_key] = self.path / app / name / filename
+        return self._downloaded[resource_key]
+
+    def download(self):
+        print("Resources")
+        for (app, charm, name, revision, filename), target in self._downloaded.items():
+            if target.exists():
+                print(f"    Downloaded resource {name} - {revision} exists")
+                continue
+
+            target.parent.mkdir(parents=True, exist_ok=True)
+            ch = charm.startswith("ch:") or not charm.startswith("cs:")
+            if ch:
+                raise NotImplementedError("Charmhub doesn't support fetching resources")
+            else:
+                url = f"{self.URL}/{remove_prefix(charm, 'cs:')}/resource/{name}/{revision}"
+                with status(f"Downloading resource {name} from charm store revision {revision}"):
+                    check_call(shlx(f"wget --quiet {url} -O {target}"))
 
 
 def charm_channel(app, charm_path) -> str:
@@ -348,14 +385,14 @@ def charm_channel(app, charm_path) -> str:
 
 
 def download(args, root):
-    snaps = SnapDownloader(root)
     charms = BundleDownloader(root, args)
+    snaps = SnapDownloader(root)
+    resources = ResourceDownloader(root)
     print("Bundles")
     k8s_master_channel = None
 
     # For each application, download the charm, resources, and snaps.
     for app_name, app in charms.applications.items():
-        print(app_name)
         charm = charms.app_download(app_name, app)
 
         app_channel = charm_channel(app, root / "charms" / app_name)
@@ -363,7 +400,6 @@ def download(args, root):
             k8s_master_channel = app_channel
 
         # Download each resource or snap.
-        resources = ResourceDownloader(root / "resources" / app_name)
         for resource in resources.list(charm, args.channel):
             # Create the filename from the snap Name and Path extension. Use this instead of just Path because
             # multiple resources can have the same names for Paths.
@@ -381,24 +417,30 @@ def download(args, root):
                 snap = Path(path).stem
 
                 # Download the snap and move it into position.
-                snaps.download(snap, snap_channel, args.arch)
+                snaps.mark_download(snap, snap_channel, args.arch)
 
                 # Ensure an empty snap shows up in the resource path
-                snap_resource = resources.path / name
-                snap_resource.mkdir(parents=True)
-                check_call(shlx(f"ln -r -s {snaps.empty_snap} {snap_resource / path}"))
+                snap_resource = resources.path / app_name / name / path
+                if not snap_resource.is_symlink():
+                    snap_resource.parent.mkdir(parents=True, exist_ok=True)
+                    check_call(shlx(f"ln -r -s {snaps.empty_snap} {snap_resource}"))
             else:
                 # This isn't a snap, do it the easy way.
                 revision = resource["Revision"]
-                resource["filepath"] = resources.download(charm, name, revision, path)
+                resource["filepath"] = resources.mark_download(app_name, charm, name, revision, path)
 
     base_snaps = ["core18", "core20", "lxd", "snapd"]
     for snap in base_snaps:
-        snaps.download(snap, "stable", None)
+        snaps.mark_download(snap, "stable", None)
 
-    if k8s_master_channel:
+    if not args.skip_snaps:
+        snaps.download()
+
+    if not args.skip_resources:
+        resources.download()
+
+    if k8s_master_channel and not args.skip_containers:
         # Download the Container Images based on the kubernetes-master channel
-        print("Containers")
         containers = ContainerDownloader(root)
         containers.download(k8s_master_channel)
 
@@ -417,17 +459,19 @@ def build_offline_bundle(root, charms: BundleDownloader):
             rsc_path = (root / "resources" / app_name / name).glob("*")
             # each resource path should contain one file, take the first one
             # if this resource is a snap, it will point to an symlink to "./snaps/empty.snap"
-            root_path = next(rsc_path)
-            return local_path(root_path)
+            try:
+                return local_path(next(rsc_path))
+            except StopIteration:
+                return None
 
-        return {name: resource_file(name) for name in rsc}
+        return {name: resource_file(name) or rev for name, rev in rsc.items()}
 
     def update_app(app_name, app):
         if app:
             app.update(
                 {
                     "charm": local_path(root / "charms" / app_name),
-                    "resources": update_resources(app_name, app.get("resources", [])),
+                    "resources": update_resources(app_name, app.get("resources", {})),
                 }
             )
         return app
@@ -487,12 +531,10 @@ def build_offline_bundle(root, charms: BundleDownloader):
 
 def main():
     args = get_args()
-    skip_download = False
 
     if args.use_path:
         root = Path(args.use_path)
         assert root.exists(), f"Path {args.use_path} Doesn't Exist"
-        skip_download = True
     elif args.channel:
         # Create a temporary dir.
         root = Path("build") / "{}-{}-{:%Y-%m-%d-%H-%M-%S}".format(args.bundle, args.channel, datetime.datetime.now())
@@ -500,10 +542,7 @@ def main():
         # Create a temporary dir.
         root = Path("build") / "{}-{:%Y-%m-%d-%H-%M-%S}".format(args.bundle, datetime.datetime.now())
 
-    if not skip_download:
-        bundle = download(args, root)
-    else:
-        bundle = BundleDownloader(root, args)
+    bundle = download(args, root)
 
     # Generate a new bundle.yaml for deployment
     with status("Writing offline bundle.yaml"):
