@@ -231,8 +231,15 @@ class ContainerDownloader(Downloader):
         ]
         return sorted(versions, key=lambda k: semver.VersionInfo.parse(k[0]))
 
+    def _image_keys(self, image):
+        if not image.startswith(self.IMAGE_REPO):
+            image_src = f"{self.IMAGE_REPO}{image}"
+        else:
+            image_src, image = image, image[len(self.IMAGE_REPO) :]  # noqa: E203 whitespace before ':'
+        return image_src, image
+
     def _image_save(self, image):
-        image_src = f"{self.IMAGE_REPO}{image}"
+        image_src, image = self._image_keys(image)
         target = Path(f"{self.path / image}.tar.gz")
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("wb") as fp:
@@ -244,7 +251,7 @@ class ContainerDownloader(Downloader):
                 p2.communicate()
 
     def _image_delete(self, image):
-        image_src = f"{self.IMAGE_REPO}{image}"
+        image_src, image = self._image_keys(image)
         check_call(shlx(f"docker rmi {image_src}"))
 
     def download(self, channel):

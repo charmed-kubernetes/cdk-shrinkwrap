@@ -79,3 +79,7 @@ def test_container_downloader(tmp_dir, mock_requests, mock_docker_cmd):
             ),
         ]
     )
+    assert not (downloader.path / "rocks.canonical.com").exists(), "None of the container paths start with this prefix"
+    assert (downloader.path / "cdkbot" / "microbot-amd64:latest.tar.gz").exists()
+    assert (downloader.path / "k8s-dns-sidecar:1.14.13.tar.gz").exists()
+    assert (downloader.path / "kubernetes-ingress-controller" / "nginx-ingress-controller-amd64:0.30.0.tar.gz").exists()
