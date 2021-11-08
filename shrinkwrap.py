@@ -31,7 +31,7 @@ def status(msg):
 
 def remove_prefix(str_o, prefix):
     if str_o.startswith(prefix):
-        return str_o[len(prefix) :]  # noqa: E203 whitespace before ':'
+        return str_o[len(prefix) :]
     return str_o
 
 
@@ -235,7 +235,7 @@ class ContainerDownloader(Downloader):
         if not image.startswith(self.IMAGE_REPO):
             image_src = f"{self.IMAGE_REPO}{image}"
         else:
-            image_src, image = image, image[len(self.IMAGE_REPO) :]  # noqa: E203 whitespace before ':'
+            image_src, image = image, image[len(self.IMAGE_REPO) :]
         return image_src, image
 
     def _image_save(self, image):
