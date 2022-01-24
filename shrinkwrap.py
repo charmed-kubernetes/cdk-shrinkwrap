@@ -3,6 +3,7 @@
 import argparse
 import datetime
 from contextlib import contextmanager
+from io import BytesIO
 import os
 from pathlib import Path
 import re
@@ -12,6 +13,7 @@ import shutil
 from subprocess import check_call, check_output, Popen, STDOUT, PIPE, CalledProcessError
 import sys
 from typing import Optional
+import zipfile
 
 import jinja2
 import requests
@@ -44,7 +46,7 @@ def remove_suffix(str_o, suffix):
 def get_args():
     """Parse cli arguments."""
     parser = argparse.ArgumentParser()
-    parser.add_argument("bundle", type=str, nargs="?", help="the bundle to shrinkwrap")
+    parser.add_argument("bundle", type=str, help="the bundle to shrinkwrap")
     parser.add_argument("--channel", "-c", default=None, help="the channel of the bundle")
     parser.add_argument("--arch", "-a", default=None, help="the target architecture of the bundle")
     parser.add_argument(
@@ -125,7 +127,7 @@ class BundleDownloader(Downloader):
 
     def bundle_download(self):
         bundle, channel = self.args.bundle, self.args.channel
-        self._downloader(bundle, Path(".bundle") / "bundle.yaml", channel)
+        return self._downloader(bundle, Path(".bundle") / "bundle.yaml", channel)
 
     def app_download(self, appname: str, app: dict):
         charm, channel = app["charm"], app.get("channel")
@@ -143,26 +145,42 @@ class BundleDownloader(Downloader):
         target = target.parent
         target.mkdir(parents=True, exist_ok=True)
         if ch:
-            self._charmhub_downloader(name, target, channel=channel)
+            return self._charmhub_downloader(name, target, channel=channel)
         else:
-            self._charmstore_downloader(name, target)
+            return self._charmstore_downloader(name, target)
+
+    @staticmethod
+    def _charmhub_refresh(name, channel, architecture):
+        channel = channel or "stable"
+        architecture = architecture or "amd64"
+        data = {
+            "context": [],
+            "actions": [
+                {
+                    "name": name,
+                    "base": {"name": "ubuntu", "architecture": architecture, "channel": channel},
+                    "action": "install",
+                    "instance-key": "shrinkwrap",
+                }
+            ],
+        }
+        resp = requests.post("https://api.charmhub.io/v2/charms/refresh", json=data)
+        return resp.json()
 
     def _charmhub_downloader(self, name, target, channel=None, arch=None):
         with status(f'Downloading "{name}" from charm hub'):
-            download_args, _ = self.to_args(target, channel, arch)
-            check_output(
-                shlx(f"juju download {name}{download_args} --filepath /tmp/archive.zip"),
-                stderr=STDOUT,
-            )
-        check_call(shlx(f"unzip -qq /tmp/archive.zip -d {target}"))
-        check_call(shlx("rm /tmp/archive.zip"))
+            _, rsc_target = self.to_args(target, channel, arch)
+            refreshed = self._charmhub_refresh(name, channel, arch)
+            url = refreshed["results"][0]["charm"]["download"]["url"]
+            resp = requests.get(url)
+            return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
 
     def _charmstore_downloader(self, name, target):
         with status(f'Downloading "{name}" from charm store'):
-            charmstore_url = "https://api.jujucharms.com/charmstore/v5"
-            check_call(shlx(f"wget --quiet {charmstore_url}/{name}/archive -O /tmp/archive.zip"))
-            check_call(shlx(f"unzip -qq /tmp/archive.zip -d {target}"))
-            check_call(shlx("rm /tmp/archive.zip"))
+            _, rsc_target = self.to_args(target)
+            url = f"https://api.jujucharms.com/charmstore/v5/{name}/archive"
+            resp = requests.get(url)
+            return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
 
 
 class OverlayDownloader(Downloader):

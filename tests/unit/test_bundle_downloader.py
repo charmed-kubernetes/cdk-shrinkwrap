@@ -1,3 +1,4 @@
+from io import BytesIO
 from pathlib import Path
 
 from shrinkwrap import BundleDownloader
@@ -23,6 +24,60 @@ def mock_ch_downloader():
 def mock_cs_downloader():
     with mock.patch("shrinkwrap.BundleDownloader._charmstore_downloader") as dl:
         yield dl
+
+
+@mock.patch("shrinkwrap.requests.get")
+@mock.patch("shrinkwrap.requests.post")
+@mock.patch("shrinkwrap.zipfile.ZipFile")
+def test_charmhub_downloader(mock_zipfile, mock_post, mock_get, tmp_dir):
+    args = mock.MagicMock()
+    args.bundle = "ch:kubernetes-unit-test"
+    args.channel = None
+    args.overlay = []
+
+    bundle_mock_url = mock.MagicMock()
+    mock_post.return_value.json.return_value = {"results": [{"charm": {"download": {"url": bundle_mock_url}}}]}
+    mock_downloaded = mock_zipfile.return_value.extractall.return_value
+    mock_get.return_value.content = b"bytes-values"
+
+    downloader = BundleDownloader(tmp_dir, args)
+    result = downloader.bundle_download()
+    assert result is mock_downloaded
+    mock_post.assert_called_once_with(
+        "https://api.charmhub.io/v2/charms/refresh",
+        json={
+            "context": [],
+            "actions": [
+                {
+                    "name": "kubernetes-unit-test",
+                    "base": {"name": "ubuntu", "architecture": "amd64", "channel": "stable"},
+                    "action": "install",
+                    "instance-key": "shrinkwrap",
+                }
+            ],
+        },
+    )
+    mock_get.assert_called_once_with(bundle_mock_url)
+    mock_zipfile.assert_called_once()
+    assert isinstance(mock_zipfile.call_args.args[0], BytesIO)
+
+
+@mock.patch("shrinkwrap.requests.get")
+@mock.patch("shrinkwrap.zipfile.ZipFile")
+def test_charmstore_downloader(mock_zipfile, mock_get, tmp_dir):
+    args = mock.MagicMock()
+    args.bundle = "cs:kubernetes-unit-test"
+    args.overlay = []
+
+    mock_downloaded = mock_zipfile.return_value.extractall.return_value
+    mock_get.return_value.content = b"bytes-values"
+
+    downloader = BundleDownloader(tmp_dir, args)
+    result = downloader.bundle_download()
+    assert result is mock_downloaded
+    mock_get.assert_called_once_with("https://api.jujucharms.com/charmstore/v5/kubernetes-unit-test/archive")
+    mock_zipfile.assert_called_once()
+    assert isinstance(mock_zipfile.call_args.args[0], BytesIO)
 
 
 def test_bundle_downloader(tmp_dir, mock_ch_downloader, mock_cs_downloader):
