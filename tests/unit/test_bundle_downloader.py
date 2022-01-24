@@ -66,7 +66,7 @@ def test_bundle_downloader_properties(tmp_dir, mock_overlay_list):
         "easyrsa",
         "etcd",
         "flannel",
-        "kubernetes-master",
+        "kubernetes-control-plane",
         "kubernetes-worker",
     }
     assert downloader.bundles["test-overlay.yaml"]["applications"].keys() == {
@@ -80,7 +80,7 @@ def test_bundle_downloader_properties(tmp_dir, mock_overlay_list):
         "easyrsa",
         "etcd",
         "flannel",
-        "kubernetes-master",
+        "kubernetes-control-plane",
         "kubernetes-worker",
         "openstack-integrator",
     }

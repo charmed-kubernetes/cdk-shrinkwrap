@@ -7,10 +7,12 @@ machines:
     series: focal
 applications:
   containerd:
-    charm: cs:~containers/containerd-160
+    charm: cs:~containers/containerd
+    channel: edge
     resources: {}
   easyrsa:
-    charm: cs:~containers/easyrsa-408
+    charm: cs:~containers/easyrsa
+    channel: edge
     num_units: 1
     resources:
       easyrsa: 5
@@ -29,13 +31,15 @@ applications:
     to:
     - '0'
   flannel:
-    charm: cs:~containers/flannel-584
+    charm: cs:~containers/flannel
+    channel: edge
     resources:
       flannel-amd64: 844
       flannel-arm64: 841
       flannel-s390x: 828
-  kubernetes-master:
-    charm: cs:~containers/kubernetes-master-1051
+  kubernetes-control-plane:
+    charm: cs:~containers/kubernetes-master
+    channel: edge
     expose: true
     num_units: 1
     options:
@@ -51,7 +55,8 @@ applications:
     to:
     - '0'
   kubernetes-worker:
-    charm: cs:~containers/kubernetes-worker-801
+    charm: cs:~containers/kubernetes-worker
+    channel: edge
     expose: true
     num_units: 1
     options:
@@ -67,11 +72,11 @@ applications:
     to:
     - '1'
 relations:
-- - kubernetes-master:kube-control
+- - kubernetes-control-plane:kube-control
   - kubernetes-worker:kube-control
-- - kubernetes-master:certificates
+- - kubernetes-control-plane:certificates
   - easyrsa:client
-- - kubernetes-master:etcd
+- - kubernetes-control-plane:etcd
   - etcd:db
 - - kubernetes-worker:certificates
   - easyrsa:client
@@ -80,10 +85,10 @@ relations:
 - - flannel:etcd
   - etcd:db
 - - flannel:cni
-  - kubernetes-master:cni
+  - kubernetes-control-plane:cni
 - - flannel:cni
   - kubernetes-worker:cni
 - - containerd:containerd
   - kubernetes-worker:container-runtime
 - - containerd:containerd
-  - kubernetes-master:container-runtime
+  - kubernetes-control-plane:container-runtime

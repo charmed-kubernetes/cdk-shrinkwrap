@@ -31,7 +31,7 @@ edit ./bundle.yaml
   containerd:
     options:                     # add this to add your offsite docker registry
       custom_registries: '[{"host": "my.custom.registry:5000", "url": "http://my.custom.registry:5000"}]'
-  kubernetes-master:
+  kubernetes-control-plane:
     options:                     # add this to add indicate that CDK images are found in the custom registry
       image-registry: my.custom.registry:5000/cdk
 ```
