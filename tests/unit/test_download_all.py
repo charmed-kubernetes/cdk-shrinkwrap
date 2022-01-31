@@ -23,9 +23,7 @@ def test_download_method(resource_list, resource_dl, snap_dl, app_dl, tmp_dir):
     with (Path(__file__).parent / "test_bundle.yaml").open() as fp:
         (root / "charms" / ".bundle").mkdir(parents=True)
         whole_bundle = yaml.safe_load(fp)
-        whole_bundle["applications"] = {
-            key: value for key, value in whole_bundle["applications"].items() if key == app_name
-        }
+        whole_bundle["services"] = {key: value for key, value in whole_bundle["services"].items() if key == app_name}
         (root / "charms" / ".bundle" / "bundle.yaml").write_text(yaml.safe_dump(whole_bundle))
 
     with (Path(__file__).parent / "test_charm_config.yaml").open() as fp:

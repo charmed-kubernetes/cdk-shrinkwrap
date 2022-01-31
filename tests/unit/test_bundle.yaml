@@ -5,7 +5,7 @@ machines:
     series: focal
   '1':
     series: focal
-applications:
+services:
   containerd:
     charm: cs:~containers/containerd-160
     resources: {}

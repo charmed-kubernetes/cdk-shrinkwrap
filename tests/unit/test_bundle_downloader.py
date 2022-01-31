@@ -116,7 +116,7 @@ def test_bundle_downloader_properties(tmp_dir, mock_overlay_list):
     with (Path(__file__).parent / "test_overlay.yaml").open() as fp:
         (downloader.bundle_path / "test-overlay.yaml").write_text(fp.read())
 
-    assert downloader.bundles["bundle.yaml"]["applications"].keys() == {
+    assert downloader.bundles["bundle.yaml"]["services"].keys() == {
         "containerd",
         "easyrsa",
         "etcd",

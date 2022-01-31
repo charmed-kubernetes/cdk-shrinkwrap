@@ -13,12 +13,10 @@ def test_build_offline_bundle(tmp_dir):
 
     with (Path(__file__).parent / "test_bundle.yaml").open() as fp:
         whole_bundle = yaml.safe_load(fp)
-        whole_bundle["applications"] = {
-            key: value for key, value in whole_bundle["applications"].items() if key == app_name
-        }
+        whole_bundle["services"] = {key: value for key, value in whole_bundle["services"].items() if key == app_name}
         charms.bundles = {"bundle.yaml": whole_bundle}
 
-    for resource in whole_bundle["applications"][app_name]["resources"]:
+    for resource in whole_bundle["services"][app_name]["resources"]:
         rsc_path = root / "resources" / app_name / resource
         rsc_path.mkdir(parents=True)
         (rsc_path / "any-file-name").touch()
