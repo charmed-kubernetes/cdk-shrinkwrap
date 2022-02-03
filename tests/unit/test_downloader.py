@@ -3,9 +3,9 @@ from pathlib import Path
 from shrinkwrap import Downloader
 
 
-def test_downloader(tmp_dir):
-    downloader = Downloader(tmp_dir)
-    assert str(downloader.path) == tmp_dir
+def test_downloader(tmpdir):
+    downloader = Downloader(tmpdir)
+    assert str(downloader.path) == tmpdir
     target = Path("./target")
     assert downloader.to_args(target) == ("", target)
     assert downloader.to_args(target, "testable") == (

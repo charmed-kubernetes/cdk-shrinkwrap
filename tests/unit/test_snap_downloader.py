@@ -13,8 +13,8 @@ def mock_snap_cmd():
             yield co
 
 
-def test_snap_downloader(tmp_dir, mock_snap_cmd):
-    downloader = SnapDownloader(tmp_dir)
+def test_snap_downloader(tmpdir, mock_snap_cmd):
+    downloader = SnapDownloader(tmpdir)
     assert downloader.empty_snap.exists(), "Empty Snap file doesn't exist"
     mock_snap_cmd.return_value = (
         "Fetching channel map info for jq\n"

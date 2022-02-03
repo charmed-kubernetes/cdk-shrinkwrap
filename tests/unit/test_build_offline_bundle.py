@@ -6,17 +6,18 @@ from shrinkwrap import build_offline_bundle, BundleDownloader
 import mock
 
 
-def test_build_offline_bundle(tmp_dir):
-    root = Path(tmp_dir)
+def test_build_offline_bundle(tmpdir, test_bundle):
+    root = Path(tmpdir)
     charms = mock.MagicMock(spec_set=BundleDownloader)
     app_name = "etcd"
+    apps = test_bundle.apps
 
-    with (Path(__file__).parent / "test_bundle.yaml").open() as fp:
+    with test_bundle.file.open() as fp:
         whole_bundle = yaml.safe_load(fp)
-        whole_bundle["services"] = {key: value for key, value in whole_bundle["services"].items() if key == app_name}
+        whole_bundle[apps] = {key: value for key, value in whole_bundle[apps].items() if key == app_name}
         charms.bundles = {"bundle.yaml": whole_bundle}
 
-    for resource in whole_bundle["services"][app_name]["resources"]:
+    for resource in whole_bundle[apps][app_name]["resources"]:
         rsc_path = root / "resources" / app_name / resource
         rsc_path.mkdir(parents=True)
         (rsc_path / "any-file-name").touch()
