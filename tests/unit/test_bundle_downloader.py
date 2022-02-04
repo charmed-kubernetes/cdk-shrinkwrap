@@ -9,9 +9,7 @@ import pytest
 
 @pytest.fixture()
 def mock_overlay_list():
-    with mock.patch(
-        "shrinkwrap.OverlayDownloader.list", new_callable=mock.PropertyMock
-    ) as ol:
+    with mock.patch("shrinkwrap.OverlayDownloader.list", new_callable=mock.PropertyMock) as ol:
         ol.return_value = {"test-overlay.yaml": "file:///"}
         yield ol
 
@@ -39,9 +37,7 @@ def test_charmhub_downloader(mock_zipfile, mock_get, tmp_dir):
     def mock_get_response(url, **_kwargs):
         response = mock.MagicMock()
         if "info" in url:
-            response.json.return_value = {
-                "default-release": {"revision": {"download": {"url": bundle_mock_url}}}
-            }
+            response.json.return_value = {"default-release": {"revision": {"download": {"url": bundle_mock_url}}}}
         elif bundle_mock_url == url:
             response.content = b"bytes-values"
         return response
@@ -56,9 +52,7 @@ def test_charmhub_downloader(mock_zipfile, mock_get, tmp_dir):
     expected_gets = [
         mock.call(
             "https://api.charmhub.io/v2/charms/info/kubernetes-unit-test",
-            params=dict(
-                channel=args.channel, fields="default-release.revision.download.url"
-            ),
+            params=dict(channel=args.channel, fields="default-release.revision.download.url"),
         ),
         mock.call(bundle_mock_url),
     ]
@@ -80,9 +74,7 @@ def test_charmstore_downloader(mock_zipfile, mock_get, tmp_dir):
     downloader = BundleDownloader(tmp_dir, args)
     result = downloader.bundle_download()
     assert result is mock_downloaded
-    mock_get.assert_called_once_with(
-        "https://api.jujucharms.com/charmstore/v5/kubernetes-unit-test/archive"
-    )
+    mock_get.assert_called_once_with("https://api.jujucharms.com/charmstore/v5/kubernetes-unit-test/archive")
     mock_zipfile.assert_called_once()
     assert isinstance(mock_zipfile.call_args.args[0], BytesIO)
 
@@ -96,30 +88,19 @@ def test_bundle_downloader(tmp_dir, mock_ch_downloader, mock_cs_downloader):
     downloader = BundleDownloader(tmp_dir, args)
     assert downloader.bundle_path == charms_path / ".bundle"
 
+    assert downloader.app_download("etcd", {"charm": "etcd", "channel": "latest/edge"}) == "etcd"
     assert (
-        downloader.app_download("etcd", {"charm": "etcd", "channel": "latest/edge"})
-        == "etcd"
-    )
-    assert (
-        downloader.app_download(
-            "containerd", {"charm": "cs:~containers/containerd-160"}
-        )
+        downloader.app_download("containerd", {"charm": "cs:~containers/containerd-160"})
         == "cs:~containers/containerd-160"
     )
-    mock_ch_downloader.assert_called_once_with(
-        "etcd", charms_path / "etcd", channel="latest/edge"
-    )
-    mock_cs_downloader.assert_called_once_with(
-        "~containers/containerd-160", charms_path / "containerd", channel=None
-    )
+    mock_ch_downloader.assert_called_once_with("etcd", charms_path / "etcd", channel="latest/edge")
+    mock_cs_downloader.assert_called_once_with("~containers/containerd-160", charms_path / "containerd", channel=None)
 
     mock_ch_downloader.reset_mock()
     mock_cs_downloader.reset_mock()
     downloader.bundle_download()
     mock_ch_downloader.assert_not_called()
-    mock_cs_downloader.assert_called_once_with(
-        "kubernetes-unit-test", downloader.bundle_path, channel=args.channel
-    )
+    mock_cs_downloader.assert_called_once_with("kubernetes-unit-test", downloader.bundle_path, channel=args.channel)
 
 
 def test_bundle_downloader_properties(tmp_dir, mock_overlay_list):
@@ -139,7 +120,7 @@ def test_bundle_downloader_properties(tmp_dir, mock_overlay_list):
         "easyrsa",
         "etcd",
         "flannel",
-        "kubernetes-master",
+        "kubernetes-control-plane",
         "kubernetes-worker",
     }
     assert downloader.bundles["test-overlay.yaml"]["applications"].keys() == {
@@ -153,7 +134,7 @@ def test_bundle_downloader_properties(tmp_dir, mock_overlay_list):
         "easyrsa",
         "etcd",
         "flannel",
-        "kubernetes-master",
+        "kubernetes-control-plane",
         "kubernetes-worker",
         "openstack-integrator",
     }

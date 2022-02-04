@@ -33,7 +33,7 @@ def status(msg):
 
 def remove_prefix(str_o, prefix):
     if str_o.startswith(prefix):
-        return str_o[len(prefix) :]  # noqa: E203 whitespace before ':'
+        return str_o[len(prefix) :]
     return str_o
 
 
@@ -239,8 +239,15 @@ class ContainerDownloader(Downloader):
         ]
         return sorted(versions, key=lambda k: semver.VersionInfo.parse(k[0]))
 
+    def _image_keys(self, image):
+        if not image.startswith(self.IMAGE_REPO):
+            image_src = f"{self.IMAGE_REPO}{image}"
+        else:
+            image_src, image = image, image[len(self.IMAGE_REPO) :]
+        return image_src, image
+
     def _image_save(self, image):
-        image_src = f"{self.IMAGE_REPO}{image}"
+        image_src, image = self._image_keys(image)
         target = Path(f"{self.path / image}.tar.gz")
         target.parent.mkdir(parents=True, exist_ok=True)
         with target.open("wb") as fp:
@@ -252,7 +259,7 @@ class ContainerDownloader(Downloader):
                 p2.communicate()
 
     def _image_delete(self, image):
-        image_src = f"{self.IMAGE_REPO}{image}"
+        image_src, image = self._image_keys(image)
         check_call(shlx(f"docker rmi {image_src}"))
 
     def download(self, channel):
@@ -323,7 +330,7 @@ class ResourceDownloader(Downloader):
         if ch:
             raise NotImplementedError("Fetching of resources from Charmhub not supported.")
         else:
-            name = remove_prefix(charm, 'cs:')
+            name = remove_prefix(charm, "cs:")
             resp = requests.get(
                 f"{self.CS_URL}/{name}/meta/resources",
                 params={"channel": channel},
@@ -349,7 +356,7 @@ class ResourceDownloader(Downloader):
                 charm_info = self._charmhub_info(charm, channel=channel, fields="default-release.revision.download.url")
                 raise NotImplementedError("Charmhub doesn't support fetching resources")
             else:
-                name = remove_prefix(charm, 'cs:')
+                name = remove_prefix(charm, "cs:")
                 url = f"{self.CS_URL}/{name}/resource/{resource}/{revision}"
                 with status(f"Downloading {charm} resource {resource} from charm store revision {revision}"):
                     check_call(shlx(f"wget --quiet {url} -O {target}"))
@@ -380,7 +387,7 @@ def download(args, root):
     snaps = SnapDownloader(root)
     resources = ResourceDownloader(root)
     print("Bundles")
-    k8s_master_channel = None
+    k8s_cp_channel = None
 
     # For each application, download the charm, resources, and snaps.
     for app_name, app in charms.applications.items():
@@ -388,8 +395,8 @@ def download(args, root):
 
         snap_channel = charm_snap_channel(app, root / "charms" / app_name)
         charm_channel = app.get("channel")
-        if "kubernetes-master" in charm:
-            k8s_master_channel = snap_channel
+        if charm in ["kubernetes-control-plane", "kubernetes-master"]:
+            k8s_cp_channel = snap_channel
 
         # Download each resource or snap.
         for resource in resources.list(charm, charm_channel):
@@ -419,7 +426,7 @@ def download(args, root):
             else:
                 # This isn't a snap, pull the resource from the appropriate store
                 # determine the resource's version from either the bundle or the charm
-                revision = app['resources'].get(resources) or resource["Revision"]
+                revision = app["resources"].get(resources) or resource["Revision"]
                 resource["filepath"] = resources.mark_download(app_name, charm, name, revision, path)
 
     base_snaps = ["core18", "core20", "lxd", "snapd"]
@@ -432,10 +439,10 @@ def download(args, root):
     if not args.skip_resources:
         resources.download()
 
-    if k8s_master_channel and not args.skip_containers:
-        # Download the Container Images based on the kubernetes-master channel
+    if k8s_cp_channel and not args.skip_containers:
+        # Download the Container Images based on the kubernetes-control-plane channel
         containers = ContainerDownloader(root)
-        containers.download(k8s_master_channel)
+        containers.download(k8s_cp_channel)
 
     return charms
 
