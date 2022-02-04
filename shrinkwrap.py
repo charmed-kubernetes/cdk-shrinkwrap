@@ -2,7 +2,8 @@
 
 import argparse
 import datetime
-from collections import namedtuple, Sequence
+from collections import namedtuple
+from collections.abc import Sequence
 from contextlib import contextmanager
 from io import BytesIO
 import os
@@ -173,10 +174,10 @@ class BundleDownloader(StoreDownloader):
             return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
 
     def _charmstore_downloader(self, name, target, channel=None):
-        with status(f'Downloading "{name}" from charm store'):
-            _, rsc_target = self.to_args(target, channel=None)
+        with status(f'Downloading "{name} {channel}" from charm store'):
+            _, rsc_target = self.to_args(target, channel=channel)
             url = f"{self.CS_URL}/{name}/archive"
-            resp = requests.get(url)
+            resp = requests.get(url, params={"channel": channel})
             return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
 
 
@@ -458,12 +459,9 @@ def download(args, root):
                     check_call(shlx(f"ln -r -s {snaps.empty_snap} {snap_resource}"))
             else:
                 # This isn't a snap, pull the resource from the appropriate store
-                bundle_resource_revision = app["resources"].get(resources)
-                if bundle_resource_revision and bundle_resource_revision != resource.revision:
-                    # if the bundle's revision doesn't match the charm's default revision, update from bundle
-                    resource = Resource(
-                        resource.name, resource.type, resource.path, bundle_resource_revision, resource.url_format
-                    )
+                # use the bundle provided resource revision if available
+                resource_rev = app["resources"].get(resource.name) or resource.revision
+                resource = Resource(resource.name, resource.type, resource.path, resource_rev, resource.url_format)
                 resources.mark_download(app_name, charm, resource)
 
     base_snaps = ["core18", "core20", "lxd", "snapd"]

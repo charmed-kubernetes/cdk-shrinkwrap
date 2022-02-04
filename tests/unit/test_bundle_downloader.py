@@ -74,7 +74,9 @@ def test_charmstore_downloader(mock_zipfile, mock_get, tmpdir):
     downloader = BundleDownloader(tmpdir, args)
     result = downloader.bundle_download()
     assert result is mock_downloaded
-    mock_get.assert_called_once_with("https://api.jujucharms.com/charmstore/v5/kubernetes-unit-test/archive")
+    mock_get.assert_called_once_with(
+        "https://api.jujucharms.com/charmstore/v5/kubernetes-unit-test/archive", params={"channel": args.channel}
+    )
     mock_zipfile.assert_called_once()
     assert isinstance(mock_zipfile.call_args.args[0], BytesIO)
 
