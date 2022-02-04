@@ -400,15 +400,15 @@ def download(args, root):
     snaps = SnapDownloader(root)
     resources = ResourceDownloader(root)
     print("Bundles")
-    k8s_master_channel = None
+    k8s_cp_channel = None
 
     # For each application, download the charm, resources, and snaps.
     for app_name, app in charms.applications.items():
         charm = charms.app_download(app_name, app)
 
         app_channel = charm_channel(app, root / "charms" / app_name)
-        if "kubernetes-master" in charm:
-            k8s_master_channel = app_channel
+        if charm in ["kubernetes-control-plane", "kubernetes-master"]:
+            k8s_cp_channel = app_channel
 
         # Download each resource or snap.
         for resource in resources.list(charm, args.channel):
@@ -450,10 +450,10 @@ def download(args, root):
     if not args.skip_resources:
         resources.download()
 
-    if k8s_master_channel and not args.skip_containers:
-        # Download the Container Images based on the kubernetes-master channel
+    if k8s_cp_channel and not args.skip_containers:
+        # Download the Container Images based on the kubernetes-control-plane channel
         containers = ContainerDownloader(root)
-        containers.download(k8s_master_channel)
+        containers.download(k8s_cp_channel)
 
     return charms
 
