@@ -7,12 +7,10 @@ machines:
     series: focal
 applications:
   containerd:
-    charm: cs:~containers/containerd
-    channel: edge
+    charm: cs:~containers/containerd-160
     resources: {}
   easyrsa:
-    charm: cs:~containers/easyrsa
-    channel: edge
+    charm: cs:~containers/easyrsa-408
     num_units: 1
     resources:
       easyrsa: 5
@@ -31,15 +29,14 @@ applications:
     to:
     - '0'
   flannel:
-    charm: cs:~containers/flannel
-    channel: edge
+    charm: cs:~containers/flannel-584
     resources:
       flannel-amd64: 844
       flannel-arm64: 841
       flannel-s390x: 828
   kubernetes-control-plane:
-    charm: cs:~containers/kubernetes-master
-    channel: edge
+    charm: kubernetes-control-plane
+    channel: latest/edge
     expose: true
     num_units: 1
     options:
@@ -55,8 +52,7 @@ applications:
     to:
     - '0'
   kubernetes-worker:
-    charm: cs:~containers/kubernetes-worker
-    channel: edge
+    charm: cs:~containers/kubernetes-worker-801
     expose: true
     num_units: 1
     options:
