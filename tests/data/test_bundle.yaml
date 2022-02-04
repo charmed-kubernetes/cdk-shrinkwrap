@@ -5,7 +5,7 @@ machines:
     series: focal
   '1':
     series: focal
-applications:
+{{ apps_or_svcs }}:
   containerd:
     charm: cs:~containers/containerd-160
     resources: {}

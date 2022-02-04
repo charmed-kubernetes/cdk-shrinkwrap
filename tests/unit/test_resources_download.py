@@ -18,8 +18,8 @@ def mock_wget_cmd():
         yield cc
 
 
-def test_resource_downloader(tmp_dir, mock_requests, mock_wget_cmd):
-    downloader = ResourceDownloader(tmp_dir)
+def test_resource_downloader(tmpdir, mock_requests, mock_wget_cmd):
+    downloader = ResourceDownloader(tmpdir)
     assert downloader.path.exists(), "Resource path doesn't exist"
 
     with pytest.raises(NotImplementedError) as ie:
@@ -33,7 +33,7 @@ def test_resource_downloader(tmp_dir, mock_requests, mock_wget_cmd):
     )
 
     target = downloader.mark_download("etcd", "cs:etcd", "snapshot", 0, "snapshot.tar.gz")
-    assert target == Path(tmp_dir) / "resources" / "etcd" / "snapshot" / "snapshot.tar.gz"
+    assert target == Path(tmpdir) / "resources" / "etcd" / "snapshot" / "snapshot.tar.gz"
     assert not target.parent.exists()
 
     downloader.download()

@@ -16,13 +16,13 @@ def test_remove_suffix():
     assert remove_suffix("abc-something", "something") == "abc-"
 
 
-def test_charm_channel(tmp_dir):
-    charm_path = Path(tmp_dir) / "charm" / "etcd"
+def test_charm_channel(tmpdir, test_charm_config, test_bundle):
+    charm_path = Path(tmpdir) / "charm" / "etcd"
     charm_path.mkdir(parents=True)
-    with (Path(__file__).parent / "test_charm_config.yaml").open() as fp:
+    with test_charm_config.open() as fp:
         (charm_path / "config.yaml").write_text(fp.read())
-    with (Path(__file__).parent / "test_bundle.yaml").open() as fp:
+    with test_bundle.file.open() as fp:
         bundle = yaml.safe_load(fp)
-    etcd = bundle["applications"]["etcd"]
+    etcd = bundle[test_bundle.apps]["etcd"]
 
     assert charm_channel(etcd, charm_path) == "3.4/stable"

@@ -19,9 +19,9 @@ def mock_docker_cmd():
             yield ck
 
 
-def test_container_downloader_no_matches(tmp_dir, mock_requests):
-    downloader = ContainerDownloader(tmp_dir)
-    assert downloader.path == Path(tmp_dir) / "containers"
+def test_container_downloader_no_matches(tmpdir, mock_requests):
+    downloader = ContainerDownloader(tmpdir)
+    assert downloader.path == Path(tmpdir) / "containers"
     mock_requests.return_value.json.return_value = []  # mock github response for empty dir listing
     channel = "latest/stable"
     assert downloader.revisions(channel) == []
@@ -30,9 +30,9 @@ def test_container_downloader_no_matches(tmp_dir, mock_requests):
     assert str(ie.value) == "No revisions matched the channel latest/stable"
 
 
-def test_container_downloader(tmp_dir, mock_requests, mock_docker_cmd):
-    downloader = ContainerDownloader(tmp_dir)
-    assert downloader.path == Path(tmp_dir) / "containers"
+def test_container_downloader(tmpdir, test_container_listing, mock_requests, mock_docker_cmd):
+    downloader = ContainerDownloader(tmpdir)
+    assert downloader.path == Path(tmpdir) / "containers"
     mock_requests.return_value.json.return_value = [
         {
             "name": "README.md",
@@ -62,7 +62,7 @@ def test_container_downloader(tmp_dir, mock_requests, mock_docker_cmd):
             "https://raw.githubusercontent.com/charmed-kubernetes/bundle/master/container-images/v1.18.18.txt",
         ),
     ]
-    with (Path(__file__).parent / "test_container_listing.txt").open() as fp:
+    with test_container_listing.open() as fp:
         mock_requests.return_value.text = fp.read()
     downloader.download(channel)
     mock_docker_cmd.assert_has_calls(

@@ -117,12 +117,16 @@ class BundleDownloader(Downloader):
 
         return self._cached_bundles
 
+    @staticmethod
+    def apps_or_svcs(_bundle):
+        return _bundle.get("applications") or _bundle.get("services")
+
     @property
     def applications(self):
         return {
-            app_name: self.bundles["bundle.yaml"]["applications"].get(app_name) or app
+            app_name: self.apps_or_svcs(self.bundles["bundle.yaml"]).get(app_name) or app
             for bundle in self.bundles.values()
-            for app_name, app in bundle["applications"].items()
+            for app_name, app in self.apps_or_svcs(bundle).items()
         }
 
     def bundle_download(self):
@@ -488,13 +492,13 @@ def build_offline_bundle(root, charms: BundleDownloader):
     for bundle_name, bundle in charms.bundles.items():
         created_bundle = dict(bundle)
         created_bundle["applications"] = {
-            app_name: update_app(app_name, app) for app_name, app in bundle["applications"].items()
+            app_name: update_app(app_name, app) for app_name, app in BundleDownloader.apps_or_svcs(bundle).items()
         }
 
         with (root / bundle_name).open("w") as fp:
             yaml.safe_dump(created_bundle, fp)
 
-        is_trusted = any(app.get("trust") for app in bundle["applications"].values() if app)
+        is_trusted = any(app.get("trust") for app in BundleDownloader.apps_or_svcs(bundle).values() if app)
         is_overlay = bundle_name != "bundle.yaml"
 
         if is_overlay:
