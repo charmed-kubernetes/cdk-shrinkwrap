@@ -2,6 +2,7 @@
 
 import argparse
 import datetime
+from collections import namedtuple, Sequence
 from contextlib import contextmanager
 from io import BytesIO
 import os
@@ -64,9 +65,6 @@ def get_args():
 
 
 class Downloader:
-    CS_URL = "https://api.jujucharms.com/charmstore/v5"
-    CH_URL = "https://api.charmhub.io/v2"
-
     def __init__(self, path):
         """
         @param path: PathLike[str]
@@ -87,7 +85,17 @@ class Downloader:
         return r_args, target
 
 
-class BundleDownloader(Downloader):
+class StoreDownloader(Downloader):
+    CS_URL = "https://api.jujucharms.com/charmstore/v5"
+    CH_URL = "https://api.charmhub.io/v2"
+
+    def _charmhub_info(self, name, **query):
+        url = f"{self.CH_URL}/charms/info/{name}"
+        resp = requests.get(url, params=query)
+        return resp.json()
+
+
+class BundleDownloader(StoreDownloader):
     def __init__(self, root, args):
         """
         @param root: PathLike[str]
@@ -151,11 +159,6 @@ class BundleDownloader(Downloader):
             return self._charmhub_downloader(name, target, channel=channel)
         else:
             return self._charmstore_downloader(name, target, channel=channel)
-
-    def _charmhub_info(self, name, **query):
-        url = f"{self.CH_URL}/charms/info/{name}"
-        resp = requests.get(url, params=query)
-        return resp.json()
 
     def _charmhub_downloader(self, name, target, channel=None):
         with status(f'Downloading "{name} {channel}" from charm hub'):
@@ -318,7 +321,38 @@ class SnapDownloader(Downloader):
                 check_call(shlx(f"mv {tgz} {snap_target}"))
 
 
-class ResourceDownloader(Downloader):
+class Resource(namedtuple("Resource", "name, type, path, revision, url_format")):
+    @classmethod
+    def from_charmstore(cls, baseurl, json):
+        if isinstance(json, Sequence):
+            return [cls.from_charmstore(baseurl, _) for _ in json]
+        return cls(
+            json["Name"],
+            json["Type"],
+            json["Path"],
+            json["Revision"],
+            f"{baseurl}/resource/{json['Name']}/{{revision}}",
+        )
+
+    @classmethod
+    def from_charmhub(cls, json):
+        if isinstance(json, Sequence):
+            return [cls.from_charmhub(_) for _ in json]
+        url_format = remove_suffix(json["download"]["url"], f"_{json['revision']}")
+        return cls(
+            json["name"],
+            json["type"],
+            json["filename"],
+            json["revision"],
+            f"{url_format}_{{revision}}",
+        )
+
+    @property
+    def url(self):
+        return self.url_format.format(revision=self.revision)
+
+
+class ResourceDownloader(StoreDownloader):
     def __init__(self, root):
         """
         @param root: PathLike[str]
@@ -328,38 +362,33 @@ class ResourceDownloader(Downloader):
     def list(self, charm, channel):
         ch = charm.startswith("ch:") or not charm.startswith("cs:")
         if ch:
-            raise NotImplementedError("Fetching of resources from Charmhub not supported.")
+            resp = self._charmhub_info(charm, channel=channel, fields="default-release.resources")
+            resource = Resource.from_charmhub(resp["default-release"]["resources"])
         else:
             name = remove_prefix(charm, "cs:")
             resp = requests.get(
                 f"{self.CS_URL}/{name}/meta/resources",
                 params={"channel": channel},
             )
-        return resp.json()
+            resource = Resource.from_charmstore(f"{self.CS_URL}/{name}", resp.json())
+        return resource
 
-    def mark_download(self, app, charm, name, revision, filename) -> Path:
-        resource_key = app, charm, name, revision, filename
+    def mark_download(self, app, charm, resource) -> Path:
+        resource_key = app, charm, resource
         if resource_key not in self._downloaded:
-            self._downloaded[resource_key] = self.path / app / name / filename
+            self._downloaded[resource_key] = self.path / app / resource.name / resource.path
         return self._downloaded[resource_key]
 
     def download(self):
         print("Resources")
-        for (app, charm, resource, revision, filename), target in self._downloaded.items():
+        for (app, charm, resource), target in self._downloaded.items():
             if target.exists():
-                print(f"    Downloaded resource {resource} - {revision} exists")
+                print(f"    Downloaded resource {resource.name} - {resource.revision} exists")
                 continue
 
             target.parent.mkdir(parents=True, exist_ok=True)
-            ch = charm.startswith("ch:") or not charm.startswith("cs:")
-            if ch:
-                charm_info = self._charmhub_info(charm, channel=channel, fields="default-release.revision.download.url")
-                raise NotImplementedError("Charmhub doesn't support fetching resources")
-            else:
-                name = remove_prefix(charm, "cs:")
-                url = f"{self.CS_URL}/{name}/resource/{resource}/{revision}"
-                with status(f"Downloading {charm} resource {resource} from charm store revision {revision}"):
-                    check_call(shlx(f"wget --quiet {url} -O {target}"))
+            with status(f"Downloading {charm} resource {resource.name} @ revision {resource.revision}"):
+                check_call(shlx(f"wget --quiet {resource.url} -O {target}"))
 
 
 def charm_snap_channel(app, charm_path) -> str:
@@ -402,8 +431,8 @@ def download(args, root):
         for resource in resources.list(charm, charm_channel):
             # Create the filename from the snap Name and Path extension. Use this instead of just Path because
             # multiple resources can have the same names for Paths.
-            path = resource["Path"]
-            name = resource["Name"]
+            path = resource.path
+            name = resource.name
 
             # If it's a snap, download it from the store.
             if path.endswith(".snap"):
@@ -425,9 +454,13 @@ def download(args, root):
                     check_call(shlx(f"ln -r -s {snaps.empty_snap} {snap_resource}"))
             else:
                 # This isn't a snap, pull the resource from the appropriate store
-                # determine the resource's version from either the bundle or the charm
-                revision = app["resources"].get(resources) or resource["Revision"]
-                resource["filepath"] = resources.mark_download(app_name, charm, name, revision, path)
+                bundle_resource_revision = app["resources"].get(resources)
+                if bundle_resource_revision and bundle_resource_revision != resource.revision:
+                    # if the bundle's revision doesn't match the charm's default revision, update from bundle
+                    resource = Resource(
+                        resource.name, resource.type, resource.path, bundle_resource_revision, resource.url_format
+                    )
+                resources.mark_download(app_name, charm, resource)
 
     base_snaps = ["core18", "core20", "lxd", "snapd"]
     for snap in base_snaps:
