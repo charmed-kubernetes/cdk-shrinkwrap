@@ -64,6 +64,9 @@ def get_args():
 
 
 class Downloader:
+    CS_URL = "https://api.jujucharms.com/charmstore/v5"
+    CH_URL = "https://api.charmhub.io/v2"
+
     def __init__(self, path):
         """
         @param path: PathLike[str]
@@ -147,44 +150,31 @@ class BundleDownloader(Downloader):
         if ch:
             return self._charmhub_downloader(name, target, channel=channel)
         else:
-            return self._charmstore_downloader(name, target)
+            return self._charmstore_downloader(name, target, channel=channel)
 
-    @staticmethod
-    def _charmhub_refresh(name, channel, architecture):
-        channel = channel or "stable"
-        architecture = architecture or "amd64"
-        data = {
-            "context": [],
-            "actions": [
-                {
-                    "name": name,
-                    "base": {"name": "ubuntu", "architecture": architecture, "channel": channel},
-                    "action": "install",
-                    "instance-key": "shrinkwrap",
-                }
-            ],
-        }
-        resp = requests.post("https://api.charmhub.io/v2/charms/refresh", json=data)
+    def _charmhub_info(self, name, **query):
+        url = f"{self.CH_URL}/charms/info/{name}"
+        resp = requests.get(url, params=query)
         return resp.json()
 
-    def _charmhub_downloader(self, name, target, channel=None, arch=None):
-        with status(f'Downloading "{name}" from charm hub'):
-            _, rsc_target = self.to_args(target, channel, arch)
-            refreshed = self._charmhub_refresh(name, channel, arch)
-            url = refreshed["results"][0]["charm"]["download"]["url"]
+    def _charmhub_downloader(self, name, target, channel=None):
+        with status(f'Downloading "{name} {channel}" from charm hub'):
+            _, rsc_target = self.to_args(target, channel)
+            charm_info = self._charmhub_info(name, channel=channel, fields="default-release.revision.download.url")
+            url = charm_info["default-release"]["revision"]["download"]["url"]
             resp = requests.get(url)
             return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
 
-    def _charmstore_downloader(self, name, target):
+    def _charmstore_downloader(self, name, target, channel=None):
         with status(f'Downloading "{name}" from charm store'):
-            _, rsc_target = self.to_args(target)
-            url = f"https://api.jujucharms.com/charmstore/v5/{name}/archive"
+            _, rsc_target = self.to_args(target, channel=None)
+            url = f"{self.CS_URL}/{name}/archive"
             resp = requests.get(url)
             return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
 
 
 class OverlayDownloader(Downloader):
-    URL = "https://api.github.com/repos/charmed-kubernetes/bundle/contents/overlays"
+    GH_URL = "https://api.github.com/repos/charmed-kubernetes/bundle/contents/overlays"
 
     def __init__(self, bundles_path):
         """
@@ -197,7 +187,7 @@ class OverlayDownloader(Downloader):
     def list(self):
         if self._list_cache:
             return self._list_cache
-        resp = requests.get(self.URL, headers={"Accept": "application/vnd.github.v3+json"})
+        resp = requests.get(self.GH_URL, headers={"Accept": "application/vnd.github.v3+json"})
         self._list_cache = {obj.get("name"): obj.get("download_url") for obj in resp.json()}
         return self._list_cache
 
@@ -322,8 +312,6 @@ class SnapDownloader(Downloader):
 
 
 class ResourceDownloader(Downloader):
-    URL = "https://api.jujucharms.com/charmstore/v5"
-
     def __init__(self, root):
         """
         @param root: PathLike[str]
@@ -335,8 +323,9 @@ class ResourceDownloader(Downloader):
         if ch:
             raise NotImplementedError("Fetching of resources from Charmhub not supported.")
         else:
+            name = remove_prefix(charm, 'cs:')
             resp = requests.get(
-                f"{self.URL}/{remove_prefix(charm, 'cs:')}/meta/resources",
+                f"{self.CS_URL}/{name}/meta/resources",
                 params={"channel": channel},
             )
         return resp.json()
@@ -349,22 +338,24 @@ class ResourceDownloader(Downloader):
 
     def download(self):
         print("Resources")
-        for (app, charm, name, revision, filename), target in self._downloaded.items():
+        for (app, charm, resource, revision, filename), target in self._downloaded.items():
             if target.exists():
-                print(f"    Downloaded resource {name} - {revision} exists")
+                print(f"    Downloaded resource {resource} - {revision} exists")
                 continue
 
             target.parent.mkdir(parents=True, exist_ok=True)
             ch = charm.startswith("ch:") or not charm.startswith("cs:")
             if ch:
+                charm_info = self._charmhub_info(charm, channel=channel, fields="default-release.revision.download.url")
                 raise NotImplementedError("Charmhub doesn't support fetching resources")
             else:
-                url = f"{self.URL}/{remove_prefix(charm, 'cs:')}/resource/{name}/{revision}"
-                with status(f"Downloading resource {name} from charm store revision {revision}"):
+                name = remove_prefix(charm, 'cs:')
+                url = f"{self.CS_URL}/{name}/resource/{resource}/{revision}"
+                with status(f"Downloading {charm} resource {resource} from charm store revision {revision}"):
                     check_call(shlx(f"wget --quiet {url} -O {target}"))
 
 
-def charm_channel(app, charm_path) -> str:
+def charm_snap_channel(app, charm_path) -> str:
     # Try to get channel from config
     with (charm_path / "config.yaml").open() as stream:
         config = yaml.safe_load(stream)
@@ -395,12 +386,13 @@ def download(args, root):
     for app_name, app in charms.applications.items():
         charm = charms.app_download(app_name, app)
 
-        app_channel = charm_channel(app, root / "charms" / app_name)
+        snap_channel = charm_snap_channel(app, root / "charms" / app_name)
+        charm_channel = app.get("channel")
         if "kubernetes-master" in charm:
-            k8s_master_channel = app_channel
+            k8s_master_channel = snap_channel
 
         # Download each resource or snap.
-        for resource in resources.list(charm, args.channel):
+        for resource in resources.list(charm, charm_channel):
             # Create the filename from the snap Name and Path extension. Use this instead of just Path because
             # multiple resources can have the same names for Paths.
             path = resource["Path"]
@@ -410,7 +402,7 @@ def download(args, root):
             if path.endswith(".snap"):
                 # If the current resource is the core snap, ignore channel
                 # and instead always download from stable.
-                snap_channel = app_channel if name != "core" else "stable"
+                snap_channel = snap_channel if name != "core" else "stable"
 
                 # Path without .snap extension is currently a match for the name in the snap store. This may not always
                 # be the case.
@@ -425,8 +417,9 @@ def download(args, root):
                     snap_resource.parent.mkdir(parents=True, exist_ok=True)
                     check_call(shlx(f"ln -r -s {snaps.empty_snap} {snap_resource}"))
             else:
-                # This isn't a snap, do it the easy way.
-                revision = resource["Revision"]
+                # This isn't a snap, pull the resource from the appropriate store
+                # determine the resource's version from either the bundle or the charm
+                revision = app['resources'].get(resources) or resource["Revision"]
                 resource["filepath"] = resources.mark_download(app_name, charm, name, revision, path)
 
     base_snaps = ["core18", "core20", "lxd", "snapd"]

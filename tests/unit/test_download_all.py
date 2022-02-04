@@ -64,7 +64,7 @@ def test_download_method(resource_list, resource_dl, snap_dl, app_dl, tmp_dir):
     assert isinstance(charms, BundleDownloader)
 
     app_dl.assert_called_once_with(app_name, charms.applications[app_name])
-    resource_list.assert_called_once_with(app_dl.return_value, args.channel)
+    resource_list.assert_called_once_with(app_dl.return_value, "latest/edge")
     snap_dl.assert_called_once()
     resource_dl.assert_called_once()
     assert (Path(tmp_dir) / "resources" / "etcd" / "etcd" / "etcd.snap").is_symlink()

@@ -1,7 +1,7 @@
 from pathlib import Path
 import yaml
 
-from shrinkwrap import remove_suffix, remove_prefix, charm_channel
+from shrinkwrap import remove_suffix, remove_prefix, charm_snap_channel
 
 
 def test_remove_prefix():
@@ -25,4 +25,4 @@ def test_charm_channel(tmp_dir):
         bundle = yaml.safe_load(fp)
     etcd = bundle["applications"]["etcd"]
 
-    assert charm_channel(etcd, charm_path) == "3.4/stable"
+    assert charm_snap_channel(etcd, charm_path) == "3.4/stable"
