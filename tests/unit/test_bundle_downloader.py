@@ -28,7 +28,7 @@ def mock_cs_downloader():
 
 @mock.patch("shrinkwrap.requests.get")
 @mock.patch("shrinkwrap.zipfile.ZipFile")
-def test_charmhub_downloader(mock_zipfile, mock_get, tmp_dir):
+def test_charmhub_downloader(mock_zipfile, mock_get, tmpdir):
     args = mock.MagicMock()
     args.bundle = "ch:kubernetes-unit-test"
     args.channel = None
@@ -46,7 +46,7 @@ def test_charmhub_downloader(mock_zipfile, mock_get, tmp_dir):
     mock_downloaded = mock_zipfile.return_value.extractall.return_value
     mock_get.side_effect = mock_get_response
 
-    downloader = BundleDownloader(tmp_dir, args)
+    downloader = BundleDownloader(tmpdir, args)
     result = downloader.bundle_download()
     assert result is mock_downloaded
     expected_gets = [
@@ -63,7 +63,7 @@ def test_charmhub_downloader(mock_zipfile, mock_get, tmp_dir):
 
 @mock.patch("shrinkwrap.requests.get")
 @mock.patch("shrinkwrap.zipfile.ZipFile")
-def test_charmstore_downloader(mock_zipfile, mock_get, tmp_dir):
+def test_charmstore_downloader(mock_zipfile, mock_get, tmpdir):
     args = mock.MagicMock()
     args.bundle = "cs:kubernetes-unit-test"
     args.overlay = []
@@ -71,7 +71,7 @@ def test_charmstore_downloader(mock_zipfile, mock_get, tmp_dir):
     mock_downloaded = mock_zipfile.return_value.extractall.return_value
     mock_get.return_value.content = b"bytes-values"
 
-    downloader = BundleDownloader(tmp_dir, args)
+    downloader = BundleDownloader(tmpdir, args)
     result = downloader.bundle_download()
     assert result is mock_downloaded
     mock_get.assert_called_once_with("https://api.jujucharms.com/charmstore/v5/kubernetes-unit-test/archive")
@@ -79,13 +79,13 @@ def test_charmstore_downloader(mock_zipfile, mock_get, tmp_dir):
     assert isinstance(mock_zipfile.call_args.args[0], BytesIO)
 
 
-def test_bundle_downloader(tmp_dir, mock_ch_downloader, mock_cs_downloader):
+def test_bundle_downloader(tmpdir, mock_ch_downloader, mock_cs_downloader):
     args = mock.MagicMock()
     args.bundle = "cs:kubernetes-unit-test"
     args.overlay = []
-    charms_path = Path(tmp_dir) / "charms"
+    charms_path = Path(tmpdir) / "charms"
 
-    downloader = BundleDownloader(tmp_dir, args)
+    downloader = BundleDownloader(tmpdir, args)
     assert downloader.bundle_path == charms_path / ".bundle"
 
     assert downloader.app_download("etcd", {"charm": "etcd", "channel": "latest/edge"}) == "etcd"
@@ -103,19 +103,19 @@ def test_bundle_downloader(tmp_dir, mock_ch_downloader, mock_cs_downloader):
     mock_cs_downloader.assert_called_once_with("kubernetes-unit-test", downloader.bundle_path, channel=args.channel)
 
 
-def test_bundle_downloader_properties(tmp_dir, mock_overlay_list):
+def test_bundle_downloader_properties(tmpdir, test_bundle, test_overlay, mock_overlay_list):
     args = mock.MagicMock()
     args.bundle = "cs:kubernetes-unit-test"
     args.overlay = ["test-overlay.yaml"]
-    downloader = BundleDownloader(tmp_dir, args)
+    downloader = BundleDownloader(tmpdir, args)
 
     # mock downloaded already
-    with (Path(__file__).parent / "test_bundle.yaml").open() as fp:
+    with test_bundle.file.open() as fp:
         (downloader.bundle_path / "bundle.yaml").write_text(fp.read())
-    with (Path(__file__).parent / "test_overlay.yaml").open() as fp:
+    with test_overlay.open() as fp:
         (downloader.bundle_path / "test-overlay.yaml").write_text(fp.read())
 
-    assert downloader.bundles["bundle.yaml"]["applications"].keys() == {
+    assert downloader.bundles["bundle.yaml"][test_bundle.apps].keys() == {
         "containerd",
         "easyrsa",
         "etcd",
