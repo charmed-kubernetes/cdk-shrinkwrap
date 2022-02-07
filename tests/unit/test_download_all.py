@@ -2,7 +2,7 @@ from pathlib import Path
 
 import yaml
 
-from shrinkwrap import download, BundleDownloader
+from shrinkwrap import download, BundleDownloader, Resource
 
 import mock
 
@@ -32,39 +32,24 @@ def test_download_method(resource_list, resource_dl, snap_dl, app_dl, tmpdir, te
         (root / "charms" / app_name).mkdir(parents=True)
         (root / "charms" / app_name / "config.yaml").write_text(fp.read())
 
-    app_dl.return_value = "cs:~containers/etcd"  # name of the charm, not the app
+    app_dl.return_value = "etcd"  # name of the charm, not the app
     resource_list.return_value = [
-        {
-            "Name": "core",
-            "Type": "file",
-            "Path": "core.snap",
-            "Description": "Snap package of core",
-            "Revision": 0,
-            "Size": 0,
-        },
-        {
-            "Name": "etcd",
-            "Type": "file",
-            "Path": "etcd.snap",
-            "Description": "Snap package of etcd",
-            "Revision": 3,
-            "Size": 0,
-        },
-        {
-            "Name": "snapshot",
-            "Type": "file",
-            "Path": "snapshot.tar.gz",
-            "Description": "Tarball snapshot of an etcd clusters data.",
-            "Revision": 0,
-            "Size": 124,
-        },
+        Resource("core", "file", "core.snap", 0, "https://api.jujucharms.com/charmstore/v5/etcd/resource/core/0"),
+        Resource("etcd", "file", "etcd.snap", 3, "https://api.jujucharms.com/charmstore/v5/etcd/resource/etcd/3"),
+        Resource(
+            "snapshot",
+            "file",
+            "snapshot.tar.gz",
+            0,
+            "https://api.jujucharms.com/charmstore/v5/etcd/resource/snapshot/0",
+        ),
     ]
 
     charms = download(args, root)
     assert isinstance(charms, BundleDownloader)
 
     app_dl.assert_called_once_with(app_name, charms.applications[app_name])
-    resource_list.assert_called_once_with(app_dl.return_value, args.channel)
+    resource_list.assert_called_once_with(app_dl.return_value, "latest/edge")
     snap_dl.assert_called_once()
     resource_dl.assert_called_once()
     assert (Path(tmpdir) / "resources" / "etcd" / "etcd" / "etcd.snap").is_symlink()
