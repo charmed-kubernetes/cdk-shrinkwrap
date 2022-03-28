@@ -429,7 +429,7 @@ def download(args, root):
 
         snap_channel = charm_snap_channel(app, root / "charms" / app_name)
         charm_channel = app.get("channel")
-        if charm in ["kubernetes-control-plane", "kubernetes-master"]:
+        if charm in ["kubernetes-control-plane", "kubernetes-master"]:  # wokeignore:rule=master
             k8s_cp_channel = snap_channel
 
         # Download each resource or snap.

@@ -36,30 +36,30 @@ def test_container_downloader(tmpdir, test_container_listing, mock_requests, moc
     mock_requests.return_value.json.return_value = [
         {
             "name": "README.md",
-            "download_url": "https://raw.githubusercontent.com/charmed-kubernetes/bundle/master/container-images/README.md",  # noqa: 501
+            "download_url": "https://raw.githubusercontent.com/charmed-kubernetes/bundle/main/container-images/README.md",  # noqa: 501
         },
         {
             "name": "v1.18.17.txt",
-            "download_url": "https://raw.githubusercontent.com/charmed-kubernetes/bundle/master/container-images/v1.18.17.txt",  # noqa: 501
+            "download_url": "https://raw.githubusercontent.com/charmed-kubernetes/bundle/main/container-images/v1.18.17.txt",  # noqa: 501
         },
         {
             "name": "v1.18.18.txt",
-            "download_url": "https://raw.githubusercontent.com/charmed-kubernetes/bundle/master/container-images/v1.18.18.txt",  # noqa: 501
+            "download_url": "https://raw.githubusercontent.com/charmed-kubernetes/bundle/main/container-images/v1.18.18.txt",  # noqa: 501
         },
         {
             "name": "v1.19.10.txt",
-            "download_url": "https://raw.githubusercontent.com/charmed-kubernetes/bundle/master/container-images/v1.19.10.txt",  # noqa: 501
+            "download_url": "https://raw.githubusercontent.com/charmed-kubernetes/bundle/main/container-images/v1.19.10.txt",  # noqa: 501
         },
     ]
     channel = "1.18/stable"
     assert downloader.revisions(channel) == [
         (
             "1.18.17",
-            "https://raw.githubusercontent.com/charmed-kubernetes/bundle/master/container-images/v1.18.17.txt",
+            "https://raw.githubusercontent.com/charmed-kubernetes/bundle/main/container-images/v1.18.17.txt",
         ),
         (
             "1.18.18",
-            "https://raw.githubusercontent.com/charmed-kubernetes/bundle/master/container-images/v1.18.18.txt",
+            "https://raw.githubusercontent.com/charmed-kubernetes/bundle/main/container-images/v1.18.18.txt",
         ),
     ]
     with test_container_listing.open() as fp:
