@@ -29,8 +29,8 @@ def test_download_method(resource_list, resource_dl, snap_dl, app_dl, tmpdir, te
         (root / "charms" / ".bundle" / "bundle.yaml").write_text(yaml.safe_dump(whole_bundle))
 
     with test_charm_config.open() as fp:
-        (root / "charms" / app_name).mkdir(parents=True)
-        (root / "charms" / app_name / "config.yaml").write_text(fp.read())
+        (root / "charms" / app_name / "latest/edge").mkdir(parents=True)
+        (root / "charms" / app_name / "latest/edge/config.yaml").write_text(fp.read())
 
     app_dl.return_value = "etcd"  # name of the charm, not the app
     resource_list.return_value = [
