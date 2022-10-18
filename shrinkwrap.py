@@ -460,8 +460,8 @@ def download(args, root):
             else:
                 # This isn't a snap, pull the resource from the appropriate store
                 # use the bundle provided resource revision if available
-                res = app.get("resources", None)
-                resource_rev = res.get(resource.name) if res else resource.revision
+                resource_rev = app.get("resources", {}).get(resource.name)
+                resource_rev = resource_rev or resource.revision
                 resource = Resource(resource.name, resource.type, resource.path, resource_rev, resource.url_format)
                 resources.mark_download(app_name, charm, resource)
 
