@@ -43,12 +43,11 @@ def test_charmhub_downloader(mock_zipfile, mock_get, tmpdir):
         return response
 
     bundle_mock_url = mock.MagicMock()
-    mock_downloaded = mock_zipfile.return_value.extractall.return_value
     mock_get.side_effect = mock_get_response
 
     downloader = BundleDownloader(tmpdir, args)
     result = downloader.bundle_download()
-    assert result is mock_downloaded
+    assert result == tmpdir / "charms" / ".bundle" / "bundle.yaml"
     expected_gets = [
         mock.call(
             "https://api.charmhub.io/v2/charms/info/kubernetes-unit-test",
@@ -68,12 +67,11 @@ def test_charmstore_downloader(mock_zipfile, mock_get, tmpdir):
     args.bundle = "cs:kubernetes-unit-test"
     args.overlay = []
 
-    mock_downloaded = mock_zipfile.return_value.extractall.return_value
     mock_get.return_value.content = b"bytes-values"
 
     downloader = BundleDownloader(tmpdir, args)
     result = downloader.bundle_download()
-    assert result is mock_downloaded
+    assert result == tmpdir / "charms" / ".bundle" / "bundle.yaml"
     mock_get.assert_called_once_with(
         "https://api.jujucharms.com/charmstore/v5/kubernetes-unit-test/archive", params={"channel": args.channel}
     )
@@ -86,17 +84,19 @@ def test_bundle_downloader(tmpdir, mock_ch_downloader, mock_cs_downloader):
     args.bundle = "cs:kubernetes-unit-test"
     args.overlay = []
     charms_path = Path(tmpdir) / "charms"
+    etcd_path = charms_path / "etcd" / "latest" / "edge"
+    containerd_path = charms_path / "containerd"
 
     downloader = BundleDownloader(tmpdir, args)
     assert downloader.bundle_path == charms_path / ".bundle"
 
-    assert downloader.app_download("etcd", {"charm": "etcd", "channel": "latest/edge"}) == "etcd"
-    assert (
-        downloader.app_download("containerd", {"charm": "cs:~containers/containerd-160"})
-        == "cs:~containers/containerd-160"
+    assert downloader.app_download("etcd", {"charm": "etcd", "channel": "latest/edge"}) == ("etcd", etcd_path)
+    assert downloader.app_download("containerd", {"charm": "cs:~containers/containerd-160"}) == (
+        "cs:~containers/containerd-160",
+        containerd_path,
     )
-    mock_ch_downloader.assert_called_once_with("etcd", charms_path / "etcd", channel="latest/edge")
-    mock_cs_downloader.assert_called_once_with("~containers/containerd-160", charms_path / "containerd", channel=None)
+    mock_ch_downloader.assert_called_once_with("etcd", etcd_path, channel="latest/edge")
+    mock_cs_downloader.assert_called_once_with("~containers/containerd-160", containerd_path, channel=None)
 
     mock_ch_downloader.reset_mock()
     mock_cs_downloader.reset_mock()
