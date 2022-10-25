@@ -147,8 +147,9 @@ class BundleDownloader(StoreDownloader):
 
     def app_download(self, appname: str, app: dict):
         charm, channel = app["charm"], app.get("channel")
-        self._downloader(charm, Path(appname) / "metadata.yaml", channel)
-        return charm
+        _, app_target = self.to_args(Path(appname), channel)
+        path = self._downloader(charm, app_target / "metadata.yaml", channel)
+        return charm, path.parent
 
     def _downloader(self, name, path, channel):
         ch = name.startswith("ch:") or not name.startswith("cs:")
@@ -156,29 +157,28 @@ class BundleDownloader(StoreDownloader):
         target = self.path / path
         if target.exists():
             print(f'    Downloaded "{name}" already exists')
-            return
+            return target
 
-        target = target.parent
-        target.mkdir(parents=True, exist_ok=True)
+        extract = target.parent
+        extract.mkdir(parents=True, exist_ok=True)
         if ch:
-            return self._charmhub_downloader(name, target, channel=channel)
+            self._charmhub_downloader(name, extract, channel=channel)
         else:
-            return self._charmstore_downloader(name, target, channel=channel)
+            self._charmstore_downloader(name, extract, channel=channel)
+        return target
 
     def _charmhub_downloader(self, name, target, channel=None):
         with status(f'Downloading "{name} {channel}" from charm hub'):
-            _, rsc_target = self.to_args(target, channel)
             charm_info = self._charmhub_info(name, channel=channel, fields="default-release.revision.download.url")
             url = charm_info["default-release"]["revision"]["download"]["url"]
             resp = requests.get(url)
-            return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
+            zipfile.ZipFile(BytesIO(resp.content)).extractall(target)
 
     def _charmstore_downloader(self, name, target, channel=None):
         with status(f'Downloading "{name} {channel}" from charm store'):
-            _, rsc_target = self.to_args(target, channel=channel)
             url = f"{self.CS_URL}/{name}/archive"
             resp = requests.get(url, params={"channel": channel})
-            return zipfile.ZipFile(BytesIO(resp.content)).extractall(rsc_target)
+            zipfile.ZipFile(BytesIO(resp.content)).extractall(target)
 
 
 class OverlayDownloader(Downloader):
@@ -425,9 +425,8 @@ def download(args, root):
 
     # For each application, download the charm, resources, and snaps.
     for app_name, app in charms.applications.items():
-        charm = charms.app_download(app_name, app)
-
-        snap_channel = charm_snap_channel(app, root / "charms" / app_name)
+        charm, charm_path = charms.app_download(app_name, app)
+        snap_channel = charm_snap_channel(app, charm_path)
         charm_channel = app.get("channel")
         if charm in ["kubernetes-control-plane", "kubernetes-master"]:  # wokeignore:rule=master
             k8s_cp_channel = snap_channel
@@ -504,10 +503,18 @@ def build_offline_bundle(root, charms: BundleDownloader):
 
     def update_app(app_name, app):
         if app:
+            _, target = Downloader.to_args(root / "charms" / app_name, app.get("channel"))
+            # Load the resource definition from the current bundle if possible
+            # This will be a map of resource-name to resource numerical version
+            resources = app.get("resources")
+            if not resources:
+                # Load the resource from the local charm
+                # This will be a map of resource-name to resource metadata
+                resources = yaml.safe_load((target / "metadata.yaml").open()).get("resources", {})
             app.update(
                 {
-                    "charm": local_path(root / "charms" / app_name),
-                    "resources": update_resources(app_name, app.get("resources", {})),
+                    "charm": local_path(target),
+                    "resources": update_resources(app_name, resources),
                 }
             )
         return app

@@ -19,6 +19,7 @@ def test_download_method(resource_list, resource_dl, snap_dl, app_dl, tmpdir, te
     args.skip_containers = False
     root = Path(tmpdir)
     app_name = "etcd"
+    etcd_path = root / "charms" / app_name
 
     with test_bundle.file.open() as fp:
         (root / "charms" / ".bundle").mkdir(parents=True)
@@ -29,10 +30,10 @@ def test_download_method(resource_list, resource_dl, snap_dl, app_dl, tmpdir, te
         (root / "charms" / ".bundle" / "bundle.yaml").write_text(yaml.safe_dump(whole_bundle))
 
     with test_charm_config.open() as fp:
-        (root / "charms" / app_name).mkdir(parents=True)
-        (root / "charms" / app_name / "config.yaml").write_text(fp.read())
+        etcd_path.mkdir(parents=True)
+        (etcd_path / "config.yaml").write_text(fp.read())
 
-    app_dl.return_value = "etcd"  # name of the charm, not the app
+    app_dl.return_value = app_name, etcd_path  # name of the charm, not the app
     resource_list.return_value = [
         Resource("core", "file", "core.snap", 0, "https://api.jujucharms.com/charmstore/v5/etcd/resource/core/0"),
         Resource("etcd", "file", "etcd.snap", 3, "https://api.jujucharms.com/charmstore/v5/etcd/resource/etcd/3"),
@@ -49,7 +50,7 @@ def test_download_method(resource_list, resource_dl, snap_dl, app_dl, tmpdir, te
     assert isinstance(charms, BundleDownloader)
 
     app_dl.assert_called_once_with(app_name, charms.applications[app_name])
-    resource_list.assert_called_once_with(app_dl.return_value, "latest/edge")
+    resource_list.assert_called_once_with(app_name, "latest/edge")
     snap_dl.assert_called_once()
     resource_dl.assert_called_once()
     assert (Path(tmpdir) / "resources" / "etcd" / "etcd" / "etcd.snap").is_symlink()

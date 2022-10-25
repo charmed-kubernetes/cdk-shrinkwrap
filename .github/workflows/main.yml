@@ -6,24 +6,23 @@ on:
     branches: [ main ]
 
 jobs:
-  Inclusive-naming-check:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v2
-      - name: woke
-        uses: canonical-web-and-design/inclusive-naming@main
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          reporter: github-pr-check
-          fail-on-error: true
+  call-inclusive-naming-check:
+    name: Inclusive Naming
+    uses: canonical-web-and-design/Inclusive-naming/.github/workflows/woke.yaml@main
+    with:
+      fail-on-error: "true"
 
   lint-unit:
     name: Lint, Unit
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python: [3.6, 3.7, 3.8, 3.9]
+        python: 
+          - "3.6"
+          - "3.7"
+          - "3.8"
+          - "3.9"
+          - "3.10"
     steps:
     - name: Check out code
       uses: actions/checkout@v2
