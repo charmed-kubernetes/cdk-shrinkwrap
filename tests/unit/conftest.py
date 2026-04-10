@@ -9,7 +9,7 @@ DATA = Path(__file__).parent.parent / "data"
 
 @pytest.fixture(params=["applications", "services"])
 def test_bundle(request, tmpdir):
-    templateEnv = Environment(loader=FileSystemLoader(searchpath=DATA))
+    templateEnv = Environment(loader=FileSystemLoader(searchpath=DATA)) # nosec B701
     template = templateEnv.get_template("test_bundle.yaml")
 
     rendered = tmpdir / "test_bundle.yaml"
